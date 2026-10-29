@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AutoCheck.Api/AutoCheck.Api.csproj" />
+  <Project Path="AutoCheck.Tests/AutoCheck.Tests.csproj" />
+</Solution>
