@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+language: es
+reviews:
+  profile: assertive
+  auto_approvals:
+    enabled: false
+    allow_author_approval: false
+  request_changes_workflow: false
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+  path_instructions:
+    - path: AutoCheck.Api/**
+      instructions: >-
+        Sigue AGENTS.md y docs/implementation.md. Busca errores de permisos por propietario/centro,
+        transacciones partidas, retenciones extendidas o confirmadas desde los 300 segundos,
+        cambios de reglas congeladas, historial mutable y duplicados por reintentos.
+        Comprueba RF/CU/PA; no propongas MongoDB como fuente exclusiva del cierre.
+    - path: .github/**
+      instructions: >-
+        Comprueba que se prueba el merge con main, no solo el head; no aceptar checks omitidos,
+        secretos accesibles a PR, acciones sin SHA o rutas que permitan integrar sin revisión humana.
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false

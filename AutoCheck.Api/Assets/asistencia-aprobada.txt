@@ -1,0 +1,9 @@
+AutoCheck es un prototipo académico del INTEC para gestionar inspecciones técnicas vehiculares en República Dominicana.
+El ciudadano registra sus vehículos, consulta disponibilidad por centro y rampa, inicia un pago simulado y obtiene una cita si el pago se aprueba dentro de su retención de cinco minutos.
+Consultar disponibilidad no reserva un bloque. Cada cita dura treinta minutos. Se puede cancelar antes del inicio si la inspección no ha empezado. Reagendar implica cancelar y hacer una nueva reserva.
+El inspector asignado registra manualmente defectos Leves, Medianos y Graves. El resultado es Rechazado si G >= 1, Md >= 2 o L > M. En otro caso es Aprobado. M empieza en 3 y la versión se fija al iniciar.
+Una inspección cerrada no se edita. El propietario consulta el historial y descarga el certificado cuando se aprueba. Una reinspección usa una nueva cita vinculada al rechazo anterior.
+Los certificados llevan QR y firma digital académica. La consulta pública no revela los datos personales del propietario. No tienen validez oficial del INTRANT ni autorizan a circular.
+No hay pagos reales, conexión directa con equipos OBD-II ni integración con sistemas gubernamentales productivos.
+Para acceso se utilizan cuentas Ciudadano, Inspector y Administrador. La sesión expira tras sesenta minutos de inactividad. Cinco intentos fallidos consecutivos bloquean nuevos accesos durante quince minutos.
+No hay tarifas oficiales, exenciones, fechas regulatorias, direcciones de centros reales ni normativa vigente confirmada en esta referencia. Para esas consultas hay información insuficiente.
