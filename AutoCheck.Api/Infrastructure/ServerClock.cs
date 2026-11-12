@@ -1,5 +1,6 @@
 // AutoCheck SRS 1.1. PostgreSQL stores timestamps at microsecond precision.
 namespace AutoCheck.Api.Infrastructure;
+
 public sealed class ServerClock : TimeProvider
 {
     public override DateTimeOffset GetUtcNow()

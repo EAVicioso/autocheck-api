@@ -10,8 +10,15 @@ public sealed class SupabaseJwks(string issuer) : IConfigurationRetriever<OpenId
     public async Task<OpenIdConnectConfiguration> GetConfigurationAsync(string address, IDocumentRetriever retriever, CancellationToken cancel)
     {
         var json = await retriever.GetDocumentAsync(address, cancel);
-        var result = new OpenIdConnectConfiguration { Issuer = issuer };
-        foreach (var key in new JsonWebKeySet(json).GetSigningKeys()) result.SigningKeys.Add(key);
+        var result = new OpenIdConnectConfiguration
+        {
+            Issuer = issuer
+        };
+        foreach (var key in new JsonWebKeySet(json).GetSigningKeys())
+        {
+            result.SigningKeys.Add(key);
+        }
+
         return result;
     }
 }

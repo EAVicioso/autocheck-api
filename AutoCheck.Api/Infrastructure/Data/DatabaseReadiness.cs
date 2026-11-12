@@ -11,11 +11,23 @@ public static class DatabaseReadiness
         try
         {
             if (await db.Database.CanConnectAsync(timeout.Token) && !(await db.Database.GetPendingMigrationsAsync(timeout.Token)).Any())
+            {
                 return Results.Ok(new { status = "Ready" });
+            }
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
-        catch (NpgsqlException) { }
-        catch (TimeoutException) { }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (NpgsqlException)
+        {
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (TimeoutException)
+        {
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 }

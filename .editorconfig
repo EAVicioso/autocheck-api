@@ -1,0 +1,19 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_collection_expression = when_types_loosely_match:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# EF emits migrations and the snapshot. Keep generated schema history unchanged;
+# review its SQL and exercise migrations in PostgreSQL instead of applying style fixes.
+[AutoCheck.Api/Infrastructure/Data/Migrations/*.cs]
+generated_code = true

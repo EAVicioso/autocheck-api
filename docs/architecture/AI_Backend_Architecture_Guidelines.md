@@ -34,29 +34,27 @@ Organizar las nuevas operaciones y las extracciones de código en `AutoCheck.Api
 
 ```text
 AutoCheck.Api/
-  Program.cs                         # Composición y registro
-  Features/
-    Citas/
-      AppointmentEndpoints.cs        # Composición de rutas del módulo
-      CancelarCita/
-        CancelarCitaEndpoint.cs
-        CancelarCitaRequest.cs
-        CancelarCitaHandler.cs
-        CancelarCitaValidator.cs
-        CancelarCitaResponse.cs
-      Common/                        # Solo conceptos compartidos del recurso
+  Program.cs                         # Composición de servicios y módulos
+  Features/Citas/
+    AppointmentEndpoints.cs          # Solo registro de casos
+    CancelarCita/
+      CancelarCitaEndpoint.cs         # Ruta, handler, validación y DTOs exclusivos
+    Common/                          # Contratos/reglas compartidos del recurso
   Infrastructure/
-    Api.cs                           # Errores, validación y Mutation existentes
-    Data/AutoCheckDb.cs
-    Data/Migrations/
+    Http/                            # Contratos, errores y headers
+    Data/                            # EF, migraciones, transacción e idempotencia
     Security/
+    Time/
+    Diagnostics/
+    Integrations/                    # Adaptadores técnicos externos
     OutboxDispatcher.cs
 AutoCheck.Tests/
-  Features/Citas/CancelarCita/        # Pruebas del caso de uso
+  Features/                          # Reglas unitarias del recurso
+  Infrastructure/                    # Configuración y límites técnicos
   Integration/                       # Escenarios HTTP/transaccionales cruzados
 ```
 
-El árbol ilustra la convención objetivo; no afirma que esos cinco archivos de CancelarCita ya estén separados. El PR #1 dejó también enrutadores con lógica y validadores inline y handlers `partial`. Extraerlos gradualmente en PR pequeños cuando se trabaje el caso, conservando contratos y pruebas; evitar una reorganización masiva junto con una corrección funcional. Los registros del módulo no deben convertirse en una nueva capa de negocio.
+La revisión del 12/11/2026 extrajo las 49 operaciones de negocio. Mantener los routers como composición. Un caso pequeño puede conservar todos sus tipos en un archivo; separar handler/validator solo cuando facilite lectura o prueba, sin generar cinco archivos mecánicos por endpoint. Conservar contratos y pruebas al refactorizar.
 
 - Los handlers acceden a `AutoCheckDb` directamente. No introducir repositorios genéricos ni otra Unit of Work sobre EF Core. Reutilizar `Mutation` para las operaciones transaccionales/idempotentes existentes.
 - Mantener consultas y reglas específicas dentro del caso. Compartir solo primitivas de dominio o contratos mínimos con un propietario claro. No llamar al endpoint/handler de otra slice ni usar HTTP interno entre módulos.
@@ -174,3 +172,9 @@ Las observaciones de Engels y su estado se registran en [seguimiento del PR #1](
 - [Supabase: RLS, claims y bypass](https://supabase.com/docs/guides/database/postgres/row-level-security).
 - [PostgreSQL: ámbito de SET LOCAL](https://www.postgresql.org/docs/17/sql-set.html).
 - [Decisiones y trazabilidad de AutoCheck](../implementation.md), [contratos HTTP](../endpoints.md), [protección de GitHub](../github-setup.md).
+
+## 12. Análisis obligatorio y estilo compartido
+
+`.editorconfig` fija formato y convenciones; `Directory.Build.props` ejecuta analizadores Microsoft `10-recommended` y `SonarAnalyzer.CSharp` privado durante compilación, con warnings como errores. SonarQube for Visual Studio complementa esa cobertura al abrir/editar archivos; no equivale por sí solo a analizar toda la solución. La salida SARIF opcional y el informe de revisión permiten reproducir el resultado. Las migraciones EF se identifican como código generado, se preservan sin retoques de estilo y se revisan mediante SQL, creación y upgrade reales.
+
+Usar bloques `extension` C# 14 cuando agrupen operaciones coherentes sobre el mismo receptor, como `ApiContract.Document`/`Validated`. Los DTOs siguen siendo records sencillos. Usar `LoggerMessage` para eventos estructurados; no pasar excepciones de proveedores/SQL que puedan contener datos privados. El informe vigente está en [revisión de calidad](../reviews/backend-quality-2026-11-12.md).

@@ -9,6 +9,7 @@ Prototipo académico del INTEC, SRS aprobado 1.1. .NET 10 Minimal APIs, vertical
 - [Activar protección y revisión automática](docs/github-setup.md)
 - [Validación de rendimiento](tests/load/README.md)
 - [Supabase, Entity Framework y puesta en marcha del equipo](docs/development-setup.md)
+- [Revisión Sonar, VSA y OWASP Top 10](docs/reviews/backend-quality-2026-11-12.md)
 
 ## Desarrollo
 
