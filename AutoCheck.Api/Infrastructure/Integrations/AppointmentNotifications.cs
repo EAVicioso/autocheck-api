@@ -1,9 +1,5 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using MongoDB.Bson;
-using MongoDB.Driver;
-using SendGrid;
-using SendGrid.Helpers.Mail;
+using Microsoft.Extensions.Options;
+using MimeKit;
 
 namespace AutoCheck.Api.Infrastructure;
 
@@ -12,26 +8,27 @@ public interface IAppointmentNotifications
     Task Send(Appointment appointment, string kind, Guid deliveryId, CancellationToken ct);
 }
 
-public sealed class AppointmentNotifications(AutoCheckDb db, IConfiguration config, IHttpClientFactory factory) : IAppointmentNotifications
+public sealed class AppointmentNotifications(AutoCheckDb db, IOptions<SmtpOptions> options, SmtpDelivery delivery) : IAppointmentNotifications
 {
     public async Task Send(Appointment appointment, string kind, Guid deliveryId, CancellationToken ct)
     {
-        var key = config["SendGrid:ApiKey"];
-        var sender = config["SendGrid:From"];
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(sender))
+        var sender = options.Value.Sender();
+        var subject = kind switch
         {
-            throw ApiContract.Unavailable();
-        }
-
+            "CITA_CONFIRMADA" => "Cita confirmada - AutoCheck",
+            "CITA_CANCELADA" => "Cita cancelada - AutoCheck",
+            _ => throw new InvalidOperationException("Unknown appointment notification type.")
+        };
         var email = await db.Users.Where(x => x.Id == appointment.UserId).Select(x => x.Email).SingleAsync(ct);
-        var message = MailHelper.CreateSingleEmail(new EmailAddress(sender, "AutoCheck"), new EmailAddress(email), kind == "CITA_CONFIRMADA" ? "Cita confirmada - AutoCheck" : "Cita cancelada - AutoCheck", $"Cita {appointment.Id}. Fecha local: {TimeZoneInfo.ConvertTime(appointment.Starts, DominicanTime.Zone):yyyy-MM-dd HH:mm}. Operación: {kind}. Pago simulado, sin movimientos reales.", null);
-        message.AddCustomArg("autocheckDeliveryId", deliveryId.ToString());
-        using var http = factory.CreateClient("sendgrid");
-        var client = new SendGridClient(http, new SendGridClientOptions { ApiKey = key });
-        var response = await client.SendEmailAsync(message, ct);
-        if (!response.IsSuccessStatusCode)
+        using var message = new MimeMessage
         {
-            throw ApiContract.Unavailable();
-        }
+            MessageId = $"{deliveryId:N}@{sender.Address.Split('@')[1]}",
+            Subject = subject,
+            Body = new TextPart("plain") { Text = $"Cita {appointment.Id}. Fecha local: {TimeZoneInfo.ConvertTime(appointment.Starts, DominicanTime.Zone):yyyy-MM-dd HH:mm}. Operación: {kind}. Pago simulado, sin movimientos reales." }
+        };
+        message.From.Add(sender);
+        message.To.Add(MailboxAddress.Parse(email));
+        message.Headers.Add("X-AutoCheck-Delivery-Id", deliveryId.ToString());
+        await delivery.Send(message, ct);
     }
 }

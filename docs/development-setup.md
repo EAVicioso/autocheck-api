@@ -126,12 +126,13 @@ Auth revisado: email habilitado, confirmación requerida, registro habilitado,
 anónimos deshabilitados; JWKS publica clave ES256. Site URL de desarrollo:
 `http://localhost:3000`. No se ampliaron redirects con comodines.
 
-**SMTP pospuesto por decisión del equipo en esta sesión**: el proveedor predeterminado de Supabase es para
-pruebas/restringido. Antes de probar registro/recuperación con cualquier correo,
-configurar SMTP/SendGrid y remitente verificado, o usar identidades verificadas
-aprovisionadas por un administrador. No desactivar confirmación para eludirlo.
-Las claves de SendGrid/Gemini, MongoDB Atlas, secret key para broadcast Realtime y
-PFX académico son configuración de cada integración, no se inventan en esta entrega.
+**SMTP implementado en el PR #11**: la API usa MailKit y el outbox; Supabase Auth
+usa custom SMTP del mismo proveedor con una clave Mail Send independiente.
+Configurar y comprobar siguiendo [SMTP/SendGrid](smtp-setup.md) y
+`scripts/configure-smtp.ps1`. No desactivar confirmación de email para eludir
+fallos del proveedor. `--check-smtp` verifica TLS y autenticación sin enviar correo.
+Las claves de Gemini, MongoDB Atlas, secret key para broadcast Realtime y
+PFX académico siguen siendo configuración de cada integración.
 Los consumidores no configurados conservan los trabajos pendientes con reintentos.
 `Workers__Enabled=false` sirve para sesiones que no deben consumir tareas compartidas;
 coordinar al menos una instancia con workers y proveedores para los flujos asíncronos.
@@ -151,7 +152,7 @@ tráfico representativo; no se eliminan índices de integridad por ese aviso.
 
 Pruebas destructivas de integración únicamente en PostgreSQL loopback con prefijo
 `autocheck_tests`, nunca contra esta base compartida. CI suministra PostgreSQL/MongoDB
-efímeros. Las pruebas con dobles no acreditan correo, IA, Atlas, firma real o RS-08.
+efímeros. Las pruebas SMTP de loopback acreditan el transporte TLS y outbox; la entrega externa requiere remitente/cuenta verificados. Los dobles no acreditan IA, Atlas, firma real o RS-08.
 No se compraron proyectos, ramas, plan de pago, backups o add-ons. El plan Free y la
 ausencia de backups gestionados requieren una decisión antes de datos de producción.
 

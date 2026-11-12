@@ -9,6 +9,7 @@ Prototipo académico del INTEC, SRS aprobado 1.1. .NET 10 Minimal APIs, vertical
 - [Activar protección y revisión automática](docs/github-setup.md)
 - [Validación de rendimiento](tests/load/README.md)
 - [Supabase, Entity Framework y puesta en marcha del equipo](docs/development-setup.md)
+- [SMTP seguro, SendGrid y Supabase Auth](docs/smtp-setup.md)
 - [Revisión Sonar, VSA y OWASP Top 10](docs/reviews/backend-quality-2026-11-12.md)
 
 ## Desarrollo
@@ -49,7 +50,8 @@ La primera cuenta administrativa se vincula a una identidad **ya creada y verifi
 | `Supabase__Url`, `Supabase__PublishableKey` | Identidad; JWT firmados y claves JWKS rotativas. |
 | `Supabase__SecretKey` | Publicación REST de disponibilidad, solo en el servidor. |
 | `Mongo__ConnectionString` | Copia asíncrona en `autocheck_inspections_db.reportes_defectos`. |
-| `SendGrid__ApiKey`, `SendGrid__From` | Confirmaciones y cancelaciones. |
+| `Smtp__Host`, `Smtp__Port`, `Smtp__Transport` | Servidor SMTP con STARTTLS obligatorio o TLS directo. |
+| `Smtp__Username`, `Smtp__Password`, `Smtp__From`, `Smtp__SenderName` | Credencial Mail Send y remitente verificado para confirmaciones/cancelaciones; ver guía SMTP. |
 | `Gemini__ApiKey`, `Gemini__Model` | Asistencia; modelo predeterminado `gemini-2.5-flash`. |
 | `Certificates__PfxPath`, `Certificates__PfxPassword` | Clave privada académica montada fuera de la imagen. |
 | `Certificates__PublicBaseUrl` | Base HTTPS de la API pública para los QR. |
@@ -70,6 +72,6 @@ $env:AUTOCHECK_TEST_MONGO = 'mongodb://127.0.0.1:27017'
 dotnet test AutoCheck.slnx -c Release
 ```
 
-Las pruebas crean y eliminan bases propias con sufijo aleatorio. Rechazan destinos remotos. CI suministra sus propios servicios efímeros y falla si falta configuración requerida. Supabase, SendGrid y Gemini se sustituyen por dobles en CI; la firma PDF se prueba criptográficamente con una clave académica temporal.
+Las pruebas crean y eliminan bases propias con sufijo aleatorio. Rechazan destinos remotos. CI suministra sus propios servicios efímeros y falla si falta configuración requerida. Supabase y Gemini se sustituyen por dobles en CI; SMTP usa además un servidor TLS de loopback, sin retransmisión; la firma PDF se prueba criptográficamente con una clave académica temporal.
 
 Docker: `docker build -f AutoCheck.Api/Dockerfile -t autocheck-api:local .`. La imagen usa un usuario sin privilegios y no incluye secretos, herramientas ni artefactos de prueba.

@@ -1,4 +1,5 @@
 // AutoCheck academic prototype, SRS 1.1. Composition root; business rules live in slices.
+using System.Security.Authentication;
 using System.Text;
 using System.Threading.RateLimiting;
 using AutoCheck.Api.Features.Auditorias;
@@ -21,6 +22,7 @@ using AutoCheck.Api.Features.Usuarios;
 using AutoCheck.Api.Features.Usuarios.Common;
 using AutoCheck.Api.Features.Vehiculos;
 using AutoCheck.Api.Features.Vehiculos.Common;
+using MailKit.Net.Smtp;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -28,7 +30,7 @@ using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
 var migrate = args.Contains("--migrate");
-var builder = WebApplication.CreateBuilder(args.Where(argument => !DatabaseCommands.IsCommand(argument)).ToArray());
+var builder = WebApplication.CreateBuilder(args.Where(argument => !DatabaseCommands.IsCommand(argument) && argument != "--check-smtp").ToArray());
 builder.Services.AddOpenApi(o => o.AddBearerContracts());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddSingleton<TimeProvider, ServerClock>();
@@ -42,13 +44,15 @@ builder.Services.AddSingleton<IAcademicPdf, AcademicPdf>();
 builder.Services.AddSingleton<MongoArchiveConnection>();
 builder.Services.AddScoped<IInspectionArchive, MongoInspectionArchive>();
 builder.Services.AddScoped<IAppointmentNotifications, AppointmentNotifications>();
+builder.Services.AddOptions<SmtpOptions>().BindConfiguration("Smtp");
+builder.Services.AddScoped<ISmtpClient>(_ => new SmtpClient { SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13 });
+builder.Services.AddScoped<SmtpDelivery>();
 builder.Services.AddScoped<OutboxDispatcher>();
 builder.Services.AddScoped<ReportConsolidator>();
 builder.Services.AddHostedService<BackgroundDelivery>();
 builder.Services.AddHttpClient<IIdentityProvider, SupabaseIdentity>(c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddHttpClient<IAssistanceProvider, GeminiAssistance>(c => c.Timeout = TimeSpan.FromSeconds(2));
 builder.Services.AddHttpClient<IAvailabilityPublisher, SupabaseAvailability>(c => c.Timeout = TimeSpan.FromSeconds(2));
-builder.Services.AddHttpClient("sendgrid", c => c.Timeout = TimeSpan.FromSeconds(3));
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 128 * 1024);
 builder.Services.AddCors(o => o.AddPolicy("frontend", p => p.WithOrigins((builder.Configuration["AllowedOrigins"] ?? "http://localhost:3000").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
@@ -85,6 +89,13 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("public", h => RateLimitPartition.GetFixedWindowLimiter(h.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 var app = builder.Build();
+if (args.Contains("--check-smtp"))
+{
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<SmtpDelivery>().Check(CancellationToken.None);
+    Console.WriteLine("{\"SmtpAuthenticated\":true,\"TlsRequired\":true,\"EmailSent\":false}");
+    return;
+}
 if (args.Any(DatabaseCommands.IsCommand))
 {
     await DatabaseCommands.Run(app, args);

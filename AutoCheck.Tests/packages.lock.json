@@ -125,6 +125,14 @@
         "resolved": "1.12.4",
         "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
       },
+      "MailKit": {
+        "type": "Transitive",
+        "resolved": "5.0.0",
+        "contentHash": "PG6hnsklTzd/iK9A6j03OxDOas9mh8zOBkbPzcsLmFOODE8Hw3HTy7HAKiJvVHXNpKc3/KMVG/4QvOAKCBbGhA==",
+        "dependencies": {
+          "MimeKit.Core": "5.0.0"
+        }
+      },
       "Microsoft.AspNetCore.Authentication.JwtBearer": {
         "type": "Transitive",
         "resolved": "10.0.14",
@@ -569,6 +577,11 @@
         "resolved": "6.0.0",
         "contentHash": "hqTM5628jSsQiv+HGpiq3WKBl2c8v1KZfby2J6Pr7pEPlK9waPdgEO6b8A/+/xn/yZ9ulv8HuqK71ONy2tg67A=="
       },
+      "MimeKit.Core": {
+        "type": "Transitive",
+        "resolved": "5.0.0",
+        "contentHash": "0RLaVyex/BjUGqiw9xtGwzyCMaBcsu33Rth61bDCeVeQaaQK7tjcy4TA+nHKTqwUdp4OGd+gnhuq2fuR+c20qA=="
+      },
       "MimeTypes": {
         "type": "Transitive",
         "resolved": "2.5.2",
@@ -662,15 +675,6 @@
         "resolved": "2.20.0",
         "contentHash": "BQ7Pzt3BkM+U9qh63APQSgELutm7acoOfCBIjQlO5tHioi7+J9LZ0z2BK5fUBVazO4aWblghz1C4XwzqFhexxw=="
       },
-      "SendGrid": {
-        "type": "Transitive",
-        "resolved": "9.29.3",
-        "contentHash": "nb/zHePecN9U4/Bmct+O+lpgK994JklbCCNMIgGPOone/DngjQoMCHeTvkl+m0Nglvm0dqMEshmvB4fO8eF3dA==",
-        "dependencies": {
-          "Newtonsoft.Json": "13.0.1",
-          "starkbank-ecdsa": "[1.3.3, 2.0.0)"
-        }
-      },
       "SharpCompress": {
         "type": "Transitive",
         "resolved": "0.48.1",
@@ -680,11 +684,6 @@
         "type": "Transitive",
         "resolved": "1.3.1",
         "contentHash": "DOdDQiO8YZ5rBtVLY+6CmR1yp9WYoJRgEEktPBrR0tEj9QO2djA/zv0O3DX0OZpEAfosbY8pytQ9tQUogwQsEA=="
-      },
-      "starkbank-ecdsa": {
-        "type": "Transitive",
-        "resolved": "1.3.3",
-        "contentHash": "OblOaKb1enXn+dSp7tsx9yjwV+/BEKM9jFhshIkZTwCk7LuTFTp+wSon6rFzuPiIiTGtvVWQNUw2slHjGktJog=="
       },
       "Stubble.Core": {
         "type": "Transitive",
@@ -781,6 +780,7 @@
         "dependencies": {
           "FluentValidation.DependencyInjectionExtensions": "[12.2.0, )",
           "Google.GenAI": "[1.27.0, )",
+          "MailKit": "[5.0.0, )",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "[10.0.14, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.14, )",
           "Microsoft.EntityFrameworkCore": "[10.0.14, )",
@@ -790,7 +790,6 @@
           "PDFsharp": "[6.2.2, )",
           "QRCoder": "[1.7.0, )",
           "Scalar.AspNetCore": "[2.20.0, )",
-          "SendGrid": "[9.29.3, )",
           "System.Security.Cryptography.Pkcs": "[10.0.14, )"
         }
       }

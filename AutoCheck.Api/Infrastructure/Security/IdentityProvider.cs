@@ -83,7 +83,7 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     public async Task Recover(string email, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "recover", new { email }, ct);
-        if ((int)response.StatusCode >= 500)
+        if (!response.IsSuccessStatusCode)
         {
             throw ApiContract.Unavailable();
         }

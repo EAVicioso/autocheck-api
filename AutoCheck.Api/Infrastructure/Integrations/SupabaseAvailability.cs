@@ -2,8 +2,6 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using MongoDB.Bson;
 using MongoDB.Driver;
-using SendGrid;
-using SendGrid.Helpers.Mail;
 
 namespace AutoCheck.Api.Infrastructure;
 

@@ -1,6 +1,6 @@
 # Revisión del backend: VSA, Sonar y seguridad
 
-Fecha: 12/11/2026. Alcance: API y Supabase para desarrollo del prototipo SRS 1.1. No se certifica preparación para producción ni cumplimiento absoluto de OWASP. SMTP se pospone por decisión del equipo.
+Fecha: 12/11/2026. Alcance: API y Supabase para desarrollo del prototipo SRS 1.1. No se certifica preparación para producción ni cumplimiento absoluto de OWASP. SMTP se pospuso en la primera revisión; el seguimiento solicitado por el equipo está implementado en [SMTP/SendGrid](../smtp-setup.md).
 
 ## Herramientas y resultado reproducible
 
@@ -75,7 +75,7 @@ Los escenarios de backend recorren HTTP real en Kestrel y PostgreSQL 17 con migr
 
 Resultado local: **58 aprobadas, 0 fallidas y 1 omitida por ausencia de MongoDB local**. CI suministra PostgreSQL y MongoDB aislados y debe ejecutar las 59 sin omisiones antes de pedir aprobación. No se cambia la condición de omisión ni se desactiva un check para obtener verde.
 
-Supabase/Auth, SendGrid, Gemini y Realtime se sustituyen por dobles en estas pruebas: no acreditan entrega SMTP ni credenciales reales de esos proveedores. La conectividad EF con Supabase y sus permisos/TLS se verificó separadamente en la puesta en marcha documentada. Auth y PostgreSQL no comparten transacción distribuida: un fallo tras actualizar la contraseña requiere reintentar/reconciliar la revocación local. SMTP, observabilidad/alertas operativas, firma/secretos de staging y aceptación formal de carga RS-08 siguen siendo pasos de despliegue; no bloquean que el equipo desarrolle con configuración segura y pruebas aisladas.
+Supabase/Auth, SendGrid, Gemini y Realtime se sustituyen por dobles en estas pruebas: no acreditan entrega SMTP ni credenciales reales de esos proveedores. La conectividad EF con Supabase y sus permisos/TLS se verificó separadamente en la puesta en marcha documentada. Auth y PostgreSQL no comparten transacción distribuida: un fallo tras actualizar la contraseña requiere reintentar/reconciliar la revocación local. La entrega SMTP externa se valida separadamente de sus pruebas TLS de loopback; observabilidad/alertas operativas, firma/secretos de staging y aceptación formal de carga RS-08 siguen siendo pasos de despliegue; no bloquean que el equipo desarrolle con configuración segura y pruebas aisladas.
 
 ## Fuentes oficiales consultadas
 
