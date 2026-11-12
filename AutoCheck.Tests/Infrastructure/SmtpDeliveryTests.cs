@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using AutoCheck.Api.Infrastructure;
 using AutoCheck.Tests.Integration;
 using MailKit.Net.Smtp;
@@ -39,6 +42,47 @@ public sealed class SmtpDeliveryTests
         Assert.Equal(0, server.Authentications);
         Assert.False(server.CredentialsBeforeTls);
         Assert.Empty(server.Attempts);
+    }
+
+    [Theory]
+    [InlineData("AUTH PLAIN invalid")]
+    [InlineData("MAIL FROM:<autocheck@example.test>")]
+    [InlineData("DATA")]
+    public async Task PlaintextCommandsCannotBypassTlsNegotiation(string command)
+    {
+        await using var server = new LoopbackSmtpServer();
+        using var connection = new TcpClient();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await connection.ConnectAsync(IPAddress.Loopback, server.Port, deadline.Token);
+        using var network = connection.GetStream();
+        using var reader = new StreamReader(network, Encoding.UTF8, leaveOpen: true);
+        await using var writer = new StreamWriter(network, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true, NewLine = "\r\n" };
+        Assert.StartsWith("220 ", await reader.ReadLineAsync(deadline.Token) ?? "");
+        await writer.WriteLineAsync(command.AsMemory(), deadline.Token);
+        Assert.StartsWith("530 ", await reader.ReadLineAsync(deadline.Token) ?? "");
+        Assert.Equal(0, server.Authentications);
+        Assert.Empty(server.Attempts);
+        Assert.Empty(server.AcceptedIds);
+    }
+
+    [Fact]
+    public async Task TlsWithoutSmtpAuthenticationCannotDeliverEmail()
+    {
+        await using var server = new LoopbackSmtpServer();
+        using var client = server.TrustedClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, SecureSocketOptions.StartTls);
+        using var message = new MimeMessage
+        {
+            Subject = "Isolated authentication test",
+            Body = new TextPart("plain") { Text = "Must not be accepted before SMTP authentication." }
+        };
+        message.From.Add(MailboxAddress.Parse("autocheck@example.test"));
+        message.To.Add(MailboxAddress.Parse("recipient@example.test"));
+        var error = await Assert.ThrowsAsync<SmtpServiceNotAuthenticatedException>(() => client.SendAsync(new SmtpSendRequest(message)));
+        Assert.Equal(SmtpStatusCode.AuthenticationRequired, error.StatusCode);
+        Assert.Equal(0, server.Authentications);
+        Assert.Empty(server.Attempts);
+        Assert.Empty(server.AcceptedIds);
     }
 
     [Fact]

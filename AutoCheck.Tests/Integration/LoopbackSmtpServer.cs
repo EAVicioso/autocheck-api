@@ -68,7 +68,7 @@ internal sealed class LoopbackSmtpServer : IAsyncDisposable
                 }
             }
         }
-        catch (Exception exception) when (stopping.IsCancellationRequested && exception is OperationCanceledException or SocketException)
+        catch (Exception exception) when (stopping.IsCancellationRequested && exception is OperationCanceledException or SocketException or ObjectDisposedException)
         {
             listener.Stop();
         }
@@ -79,22 +79,18 @@ internal sealed class LoopbackSmtpServer : IAsyncDisposable
         using var network = connection.GetStream();
         using var tls = new SslStream(network, leaveInnerStreamOpen: true);
         var wire = new SmtpWire(network);
-        var secured = false;
         try
         {
             await wire.Reply("220 localhost isolated SMTP", ct);
+            await NegotiateStartTls(wire, ct);
+            wire.Dispose();
+            // Every session must complete TLS before SMTP commands are dispatched.
+            await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = certificate, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13 }, ct);
+            wire = new SmtpWire(tls);
             while (await wire.Reader.ReadLineAsync(ct) is { } line)
             {
                 var command = line.Split(' ', 2)[0];
-                if (command == "STARTTLS")
-                {
-                    await wire.Reply("220 Ready for TLS", ct);
-                    wire.Dispose();
-                    await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = certificate, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13 }, ct);
-                    wire = new SmtpWire(tls);
-                    secured = true;
-                }
-                else if (!await Handle(command, line, wire, secured, ct))
+                if (!await Handle(command, line, wire, ct))
                 {
                     break;
                 }
@@ -106,17 +102,45 @@ internal sealed class LoopbackSmtpServer : IAsyncDisposable
         }
     }
 
-    private async Task<bool> Handle(string command, string line, SmtpWire wire, bool secured, CancellationToken ct)
+    private async Task NegotiateStartTls(SmtpWire wire, CancellationToken ct)
     {
+        var greeting = await wire.Reader.ReadLineAsync(ct);
+        if (greeting is null || !greeting.StartsWith("EHLO ", StringComparison.Ordinal))
+        {
+            await RejectPlaintext(wire, greeting, ct);
+        }
+        await wire.Reply(AdvertiseTls ? "250-localhost\r\n250-STARTTLS\r\n250 AUTH PLAIN" : "250-localhost\r\n250 AUTH PLAIN", ct);
+        var command = await wire.Reader.ReadLineAsync(ct);
+        if (command != "STARTTLS")
+        {
+            await RejectPlaintext(wire, command, ct);
+        }
+        await wire.Reply("220 Ready for TLS", ct);
+    }
+
+    private async Task RejectPlaintext(SmtpWire wire, string? command, CancellationToken ct)
+    {
+        CredentialsBeforeTls |= command?.StartsWith("AUTH ", StringComparison.Ordinal) == true;
+        await wire.Reply("530 Must negotiate STARTTLS first", ct);
+        throw new IOException("Isolated SMTP requires TLS before processing commands.");
+    }
+
+    private async Task<bool> Handle(string command, string line, SmtpWire wire, CancellationToken ct)
+    {
+        if (!wire.Authenticated && command is "MAIL" or "RCPT" or "DATA")
+        {
+            await wire.Reply("530 Authentication required", ct);
+            return true;
+        }
         switch (command)
         {
             case "EHLO":
-                await wire.Reply(!secured && AdvertiseTls ? "250-localhost\r\n250-STARTTLS\r\n250 AUTH PLAIN" : "250-localhost\r\n250 AUTH PLAIN", ct);
+                await wire.Reply("250-localhost\r\n250 AUTH PLAIN", ct);
                 break;
             case "AUTH":
-                CredentialsBeforeTls |= !secured;
                 var expected = "AUTH PLAIN " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"\0{Username}\0{Password}"));
-                var valid = secured && line == expected;
+                var valid = line == expected;
+                wire.Authenticated = valid;
                 Authentications += valid ? 1 : 0;
                 await wire.Reply(valid ? "235 Authenticated" : "535 Invalid credentials", ct);
                 break;
@@ -182,6 +206,7 @@ internal sealed class LoopbackSmtpServer : IAsyncDisposable
 
     private sealed class SmtpWire(Stream stream) : IDisposable
     {
+        public bool Authenticated { get; set; }
         public StreamReader Reader { get; } = new(stream, Encoding.UTF8, leaveOpen: true);
         private readonly StreamWriter writer = new(stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true, NewLine = "\r\n" };
         public Task Reply(string value, CancellationToken ct) => writer.WriteLineAsync(value.AsMemory(), ct);
