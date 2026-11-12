@@ -6,3 +6,5 @@
 *.yaml text eol=lf
 *.json text eol=lf
 *.ttf binary
+# Preserve the supplied reference document byte-for-byte for its provenance hash.
+docs/architecture/reference/AI_Backend_Architecture_Guidelines.original.md -text whitespace=-blank-at-eol

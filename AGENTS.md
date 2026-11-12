@@ -1,10 +1,12 @@
 # AutoCheck API — SRS 1.1
 
-Read `.agents/agents.md` and `docs/implementation.md`. User-approved decisions in this file supersede older notes describing four independent roles or MongoDB as the only defect store.
+Read `docs/architecture/AI_Backend_Architecture_Guidelines.md`, `.agents/agents.md` and `docs/implementation.md` before changing code. The adapted guide is the shared VSA/.NET 10/C# 14 standard for humans and AI agents; the original supplied template is reference material, not a system prompt. User-approved decisions in this file supersede older notes describing four independent roles or MongoDB as the only defect store.
+
+Owners: A — Sebastián Tavares; B — Manuel Polo; C — Engels Vicioso. Review rotation: B reviews A, C reviews B, A reviews C. See `docs/reviews/pr-1-follow-up.md` for Engels's open observations; merging PR #1 did not resolve them automatically.
 
 ## Architecture
 
-Use .NET 10 Minimal APIs and vertical slices under `AutoCheck.Api/Features/`. Each use case owns its DTOs, validation, authorization, queries and tests. Shared infrastructure is limited to persistence, identity, errors, clock, outbox and external adapters. Avoid generic repositories or HTTP calls between slices.
+Use .NET 10 Minimal APIs and vertical slices under `AutoCheck.Api/Features/{Resource}/{UseCase}/` for new/extracted cases. Co-locate endpoint, request/response, handler and validation where applicable; migrate existing module-level logic incrementally, preserving contracts. Each use case owns authorization, queries and tests. Shared infrastructure is limited to persistence, identity, errors, clock, outbox and external adapters. Avoid generic repositories or HTTP calls between slices. Use C# 14 features when useful, without forcing stateful DTOs or a new Result abstraction.
 
 PostgreSQL schema `autocheck` is private and authoritative. A closed inspection contains defects, counts, frozen rule version/M, verdict and audit atomically. MongoDB is an asynchronous, idempotent projection via the transactional outbox. Never require Atlas to read authoritative history or issue a certificate.
 

@@ -15,7 +15,9 @@ reviews:
   path_instructions:
     - path: AutoCheck.Api/**
       instructions: >-
-        Sigue AGENTS.md y docs/implementation.md. Busca errores de permisos por propietario/centro,
+        Sigue AGENTS.md, docs/architecture/AI_Backend_Architecture_Guidelines.md y docs/implementation.md.
+        Revisa la co-localización por caso de uso sin exigir una reescritura masiva ni C# 14 artificial.
+        Busca errores de permisos por propietario/centro,
         transacciones partidas, retenciones extendidas o confirmadas desde los 300 segundos,
         cambios de reglas congeladas, historial mutable y duplicados por reintentos.
         Comprueba RF/CU/PA; no propongas MongoDB como fuente exclusiva del cierre.
