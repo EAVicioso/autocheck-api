@@ -26,9 +26,9 @@ Cada persona entrega endpoint, DTO/validación, autorización por recurso, persi
 
 ## Contratos y vertical slices
 
-Las features están en `AutoCheck.Api/Features/`. Sus métodos de caso de uso mantienen juntos consultas y orquestación; la composición queda en `Program.cs`. Infraestructura compartida: `AutoCheckDb`, errores, identidad actual, reloj, transacción/idempotencia, outbox y adaptadores sustituibles. No hay repositorio genérico, MediatR ni llamadas HTTP entre features.
+Las features están en `AutoCheck.Api/Features/`. Los flujos principales tienen carpetas por caso de uso, por ejemplo `Inspecciones/CerrarInspeccion` y `Pagos/IniciarPago`, con su request y handler. Los enrutadores del módulo registran rutas y validadores; la composición queda en `Program.cs`. Infraestructura compartida: `AutoCheckDb`, errores, identidad actual, reloj, transacción/idempotencia, outbox y adaptadores sustituibles. No hay repositorio genérico, MediatR ni llamadas HTTP entre features.
 
-Los contratos completos se consultan en OpenAPI y el índice `endpoints.md`. Todas las entradas se validan antes de efectos secundarios. Las colecciones usan `pagina` (desde 1) y `tamano` (1–20). Los errores incluyen Problem Details, `codigo` y `traceId`, excepto asistencia que conserva su JSON exacto.
+Los contratos completos se consultan en OpenAPI y el índice `endpoints.md`. Todas las entradas se validan antes de efectos secundarios. Las colecciones usan `pagina` (desde 1) y `tamano` (1–20). Citas e inspecciones filtran por `estado` y `desde`/`hasta` inclusivos locales de su fecha de inicio; usuarios por `rol`/`activo`; catálogos por `padreId`. Los errores incluyen Problem Details, `codigo` y `traceId`, excepto asistencia que conserva su JSON exacto.
 
 `Idempotency-Key` (1–128 caracteres) es obligatorio al iniciar pago/inspección, cancelar, cerrar y solicitar certificado. La clave se asocia a actor, ruta, método y fingerprint del cuerpo. Una misma clave/cuerpo reproduce estado HTTP, cuerpo y Location originales; un cuerpo distinto devuelve 409. Estos registros no almacenan credenciales ni tokens.
 
@@ -74,7 +74,7 @@ La primera migración crea el modelo; la segunda agrega restricciones, historial
 
 No se aplicaron estas migraciones a Supabase ni a otra base compartida durante la implementación. Los cambios posteriores deben ser aditivos y probarse sobre la base de main. La migración de protección es forward-only para evitar borrar evidencia mediante rollback ordinario.
 
-Outbox usa `FOR UPDATE SKIP LOCKED`, identidades durables y backoff hasta 300 segundos. MongoDB usa upsert por ObjectId. Enviar correo tiene semántica at-least-once: un fallo incierto tras la aceptación del proveedor puede repetir un mensaje; nunca repite el pago o la cita. Se conserva delivery ID para correlación. Monitorizar mensajes pendientes/reintentos y el checkpoint de consolidación.
+Outbox usa `FOR UPDATE SKIP LOCKED`, identidades durables y backoff hasta 300 segundos. Tiene consumidores independientes para pagos, firma, Atlas, correo y Realtime; una dependencia lenta no bloquea la emisión PDF. MongoDB usa upsert por ObjectId. Enviar correo tiene semántica at-least-once: un fallo incierto tras la aceptación del proveedor puede repetir un mensaje; nunca repite el pago o la cita. Se conserva delivery ID para correlación y se omite una confirmación pendiente si la cita ya fue cancelada. Monitorizar mensajes pendientes/reintentos y el checkpoint de consolidación.
 
 Azure App Service debe mantener activo el proceso/worker durante validaciones y asegurar HTTPS. Esto es necesario para el consolidado antes de las 00:05 y para la emisión en menos de diez segundos. Configurar PFX y proveedores antes de una demostración; las pruebas con dobles no validan credenciales reales.
 

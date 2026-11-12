@@ -21,14 +21,15 @@ public static class UserEndpoints
             return ApiReply.Ok(Response(u));
         })).Interactive().Document<UserResponse>("ActualizarPerfil", "6.2.1.1")
             .Validated<ProfileRequest>(v => { v.RuleFor(x => x.Nombre).NotEmpty().MaximumLength(120); v.RuleFor(x => x.Celular).NotNull().MaximumLength(30); });
-        g.MapGet("", async (HttpContext h, AutoCheckDb db, AppActor actor, CancellationToken ct) =>
+        g.MapGet("", async (string? rol, bool? activo, HttpContext h, AutoCheckDb db, AppActor actor, CancellationToken ct) =>
         {
             actor.RequirePermission(Permissions.Users);
-            var q = db.Users.AsNoTracking().Where(x => actor.CenterId == null || x.CenterId == actor.CenterId);
+            ApiContract.Filter(rol, Roles.Admin, Roles.Inspector, Roles.Citizen);
+            var q = db.Users.AsNoTracking().Where(x => (actor.CenterId == null || x.CenterId == actor.CenterId) && (rol == null || x.Role == rol) && (activo == null || x.Active == activo));
             var page = ApiContract.Page(h); var size = ApiContract.Size(h);
             return new { items = (await q.OrderBy(x => x.Id).Skip((page - 1) * size).Take(size).ToListAsync(ct)).Select(Response), pagina = page };
         }).Document<UserListResponse>("ListarUsuarios", "CU-11 / PA-11");
-        g.MapPatch("/{id:guid}/acceso", async (Guid id, AccessRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation) => await mutation.Run(h, r, async ct =>
+        g.MapPatch("/{id:guid}/acceso", async (Guid id, AccessRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
         {
             actor.RequirePermission(Permissions.Users);
             await db.LockAsync("user:" + id, ct);
@@ -45,6 +46,8 @@ public static class UserEndpoints
             if ((user.CenterId != r.CentroId || !r.Activo || r.Rol != user.Role) &&
                 await db.Appointments.AnyAsync(x => x.InspectorId == id && (x.State == "CONFIRMADA" || x.State == "EN_INSPECCION"), ct))
                 throw ApiContract.Conflict("ASIGNACIONES_PENDIENTES", "Resuelve las asignaciones del inspector antes de cambiar su acceso.");
+            db.Audit.Add(new() { ActorId = actor.Id, At = clock.GetUtcNow(), Operation = "CAMBIO_ACCESO", Entity = user.Id.ToString(), Correlation = h.TraceIdentifier,
+                Outcome = ApiReply.Serialize(new { anterior = new { rol = user.Role, permisos = user.Permissions, centroId = user.CenterId, activo = user.Active }, nuevo = r }) });
             user.Role = r.Rol; user.Permissions = r.Permisos.Distinct().ToArray(); user.CenterId = r.CentroId; user.Active = r.Activo;
             return ApiReply.Ok(Response(user));
         })).Interactive().Document<UserResponse>("CambiarAcceso", "CU-11 / PA-11a,b")

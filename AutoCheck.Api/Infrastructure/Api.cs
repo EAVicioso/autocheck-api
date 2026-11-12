@@ -65,6 +65,15 @@ public static class ApiContract
         return value;
     }
 
+    public static (DateTimeOffset? From, DateTimeOffset? To) UtcRange(DateOnly? from, DateOnly? to)
+    {
+        if (from > to || to == DateOnly.MaxValue) throw Invalid("Rango de fechas inválido.");
+        return (from is null ? null : DominicanTime.Start(from.Value), to is null ? null : DominicanTime.Start(to.Value.AddDays(1)));
+    }
+    public static void Filter(string? value, params string[] allowed)
+    {
+        if (value is not null && !allowed.Contains(value)) throw Invalid("Filtro inválido.");
+    }
     public static ApiException Invalid(string message) => new(400, "SOLICITUD_INVALIDA", message);
     public static ApiException Missing() => new(404, "RECURSO_NO_ENCONTRADO", "Recurso no encontrado.");
     public static ApiException Conflict(string code, string message) => new(409, code, message);
@@ -95,7 +104,8 @@ public sealed class ApiErrors(RequestDelegate next, ILogger<ApiErrors> logger)
             context.Response.Clear();
             if (context.Request.Path == "/api/asistencia")
             {
-                await Results.Json(new { respuesta = error.Message, categoria = "NO_DETERMINADA", codigo = "SOLICITUD_INVALIDA" }, statusCode: error.Status).ExecuteAsync(context);
+                await Results.Json(new { respuesta = error.Status == 503 ? AutoCheck.Api.Features.Chatbot.AssistanceEndpoints.Contingency : error.Message,
+                    categoria = "NO_DETERMINADA", codigo = error.Status == 503 ? "SERVICIO_NO_DISPONIBLE" : "SOLICITUD_INVALIDA" }, statusCode: error.Status).ExecuteAsync(context);
                 return;
             }
             await Results.Problem(statusCode: error.Status, title: error.Message, extensions: new Dictionary<string, object?>

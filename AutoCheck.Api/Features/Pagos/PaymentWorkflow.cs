@@ -2,7 +2,7 @@
 namespace AutoCheck.Api.Features.Pagos;
 
 public sealed record SandboxEvent(string EventoId, Guid IntentoId, string Resultado);
-public sealed record PaymentStateResponse(Guid IntentoId, Guid RetencionId, string Estado, DateTimeOffset ExpiraUtc, Guid? CitaId, Guid? ReversionId);
+public sealed record PaymentStateResponse(Guid IntentoId, Guid RetencionId, string Estado, DateTimeOffset ExpiraUtc, Guid? CitaId, Guid? ReversionId, decimal Monto, string Moneda);
 public interface IPaymentSandbox { Task<SandboxEvent> Process(PaymentAttempt attempt, CancellationToken ct); }
 public sealed class AcademicPaymentSandbox : IPaymentSandbox
 {
@@ -49,6 +49,6 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
     {
         var local = db.Appointments.Local.SingleOrDefault(x => x.AttemptId == p.Id);
         var appointmentId = local?.Id ?? await db.Appointments.Where(x => x.AttemptId == p.Id).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct);
-        return new(p.Id, p.Id, p.State == "PENDIENTE" && p.Expires <= clock.GetUtcNow() ? "VENCIDO" : p.State, p.Expires, appointmentId, p.ReversalId);
+        return new(p.Id, p.Id, p.State == "PENDIENTE" && p.Expires <= clock.GetUtcNow() ? "VENCIDO" : p.State, p.Expires, appointmentId, p.ReversalId, p.Amount, p.Currency);
     }
 }

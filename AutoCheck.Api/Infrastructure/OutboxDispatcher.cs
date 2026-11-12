@@ -8,14 +8,16 @@ namespace AutoCheck.Api.Infrastructure;
 public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspectionArchive archive, IAppointmentNotifications notifications,
     IAvailabilityPublisher availability, IPaymentSandbox sandbox, PaymentWorkflow payments, CertificateIssuer certificates, ILogger<OutboxDispatcher> logger)
 {
-    public async Task<bool> DispatchOne(CancellationToken ct)
+    public async Task<bool> DispatchOne(CancellationToken ct, string? kind = null)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var now = clock.GetUtcNow();
-        var message = await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Completed\" IS NULL AND \"Available\" <= {now} ORDER BY \"Available\", \"Id\" LIMIT 1 FOR UPDATE SKIP LOCKED").SingleOrDefaultAsync(ct);
+        var eventKind = kind ?? "";
+        var message = await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Completed\" IS NULL AND \"Available\" <= {now} AND ({eventKind} = '' OR \"Kind\" = {eventKind}) ORDER BY \"Available\", \"Id\" LIMIT 1 FOR UPDATE SKIP LOCKED").SingleOrDefaultAsync(ct);
         if (message is null) return false;
         try
         {
+            var outcome = "ENTREGADO";
             switch (message.Kind)
             {
                 case "PAGO_SANDBOX":
@@ -28,15 +30,18 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
                     await db.LockAsync("inspection:" + message.AggregateId, ct); await certificates.Complete(message.AggregateId, ct); break;
                 case "CITA_CONFIRMADA":
                 case "CITA_CANCELADA":
+                    await db.LockAsync("notification:" + message.AggregateId, ct);
                     var appointment = await db.Appointments.AsNoTracking().SingleAsync(x => x.Id == message.AggregateId, ct);
-                    await notifications.Send(appointment, message.Kind, message.Id, ct); break;
+                    if (message.Kind == "CITA_CONFIRMADA" && appointment.State == "CANCELADA") outcome = "SUPERADO_POR_CANCELACION";
+                    else await notifications.Send(appointment, message.Kind, message.Id, ct);
+                    break;
                 case "DISPONIBILIDAD":
                     using (var payload = JsonDocument.Parse(message.Payload)) await availability.Publish(payload.RootElement.GetProperty("centroId").GetGuid(), ct);
                     break;
                 default: throw new InvalidOperationException("Unknown outbox event type.");
             }
             message.Completed = clock.GetUtcNow();
-            db.Audit.Add(new() { At = clock.GetUtcNow(), Operation = message.Kind, Entity = message.AggregateId.ToString(), Outcome = "ENTREGADO", Correlation = message.Id.ToString() });
+            db.Audit.Add(new() { At = clock.GetUtcNow(), Operation = message.Kind, Entity = message.AggregateId.ToString(), Outcome = outcome, Correlation = message.Id.ToString() });
             await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -57,22 +62,43 @@ public sealed class BackgroundDelivery(IServiceScopeFactory scopes, IConfigurati
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!config.GetValue("Workers:Enabled", true)) return;
-        var nextReports = DateTimeOffset.MinValue;
-        while (!stoppingToken.IsCancellationRequested)
+        if (!config.GetValue("Workers:Enabled", true) || string.IsNullOrWhiteSpace(config.GetConnectionString("Postgres"))) return;
+        // Independent lanes prevent an unavailable Atlas/email/Realtime provider from delaying PDF issuance or payment processing.
+        var tasks = new[] { "PAGO_SANDBOX", "CERTIFICADO", "COPIA_MONGO", "CITA_CONFIRMADA", "CITA_CANCELADA", "DISPONIBILIDAD" }
+            .Select(kind => DeliveryLoop(kind, stoppingToken)).Append(Housekeeping(stoppingToken));
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task DeliveryLoop(string kind, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
         {
             try
             {
                 for (var n = 0; n < 20; n++)
                 {
                     using var scope = scopes.CreateScope();
-                    if (!await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchOne(stoppingToken)) break;
+                    if (!await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchOne(ct, kind)) break;
                 }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex) { logger.LogWarning("Delivery lane {Kind} unavailable ({ExceptionType})", kind, ex.GetType().Name); }
+            await Task.Delay(TimeSpan.FromMilliseconds(250), clock, ct);
+        }
+    }
+
+    private async Task Housekeeping(CancellationToken stoppingToken)
+    {
+        var nextReports = DateTimeOffset.MinValue;
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var expirationScope = scopes.CreateScope();
+                await Expire(expirationScope.ServiceProvider.GetRequiredService<AutoCheckDb>(), stoppingToken);
                 if (clock.GetUtcNow() >= nextReports)
                 {
                     using var scope = scopes.CreateScope();
-                    var db = scope.ServiceProvider.GetRequiredService<AutoCheckDb>();
-                    await Expire(db, stoppingToken);
                     await scope.ServiceProvider.GetRequiredService<ReportConsolidator>().Run(stoppingToken);
                     nextReports = clock.GetUtcNow().AddSeconds(30);
                 }

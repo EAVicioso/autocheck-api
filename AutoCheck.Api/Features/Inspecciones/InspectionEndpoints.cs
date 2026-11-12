@@ -4,16 +4,13 @@ using MongoDB.Bson;
 
 namespace AutoCheck.Api.Features.Inspecciones;
 
-public sealed record StartInspectionRequest(Guid CitaId);
-public sealed record RegisterDefectsRequest(int VersionEsperada, DefectEntry[] Defectos);
-public sealed record CloseInspectionRequest(int VersionEsperada);
 public sealed record NewRuleRequest(int M, DateTimeOffset VigenciaUtc);
 public sealed record RuleResponse(Guid Id, string Version, int M, DateTimeOffset VigenciaUtc);
 public sealed record HistoryResponse(Guid Id, DateTimeOffset? CierreUtc, string? Resultado, string VersionReglas, int M, int L, int Md, int G, Guid CentroId, Guid? InspeccionAnteriorId);
 public sealed record InspectionResponse(Guid Id, Guid VehiculoId, Guid CentroId, Guid RampaId, Guid InspectorId, Guid? InspeccionAnteriorId,
     DateTimeOffset InicioUtc, DateTimeOffset? CierreUtc, string Estado, string? Resultado, string VersionReglas, int M, int L, int Md, int G, int Version, DefectEntry[]? Defectos);
 
-public static class InspectionEndpoints
+public static partial class InspectionEndpoints
 {
     public static InspectionResponse Response(Inspection i) => new(i.Id, i.VehicleId, i.CenterId, i.RampId, i.InspectorId, i.PreviousId, i.Started, i.Closed, i.State, i.Result,
         i.RuleVersion, i.MaxMinor, i.Minor, i.Medium, i.Serious, i.Revision, i.Defects is null ? null : JsonSerializer.Deserialize<DefectEntry[]>(i.Defects, ApiReply.JsonOptions));
@@ -21,10 +18,14 @@ public static class InspectionEndpoints
     public static void MapInspections(this IEndpointRouteBuilder routes)
     {
         var g = routes.MapGroup("/api/inspecciones").WithTags("Inspecciones").RequireAuthorization();
-        g.MapGet("", async (HttpContext h, AutoCheckDb db, AppActor a, CancellationToken ct) => new
+        g.MapGet("", async (DateOnly? desde, DateOnly? hasta, string? estado, HttpContext h, AutoCheckDb db, AppActor a, CancellationToken ct) =>
         {
+            var (from, to) = ApiContract.UtcRange(desde, hasta); ApiContract.Filter(estado, "ABIERTA", "CERRADA");
+            return new {
             items = (await db.Inspections.AsNoTracking().Where(x => x.OwnerId == a.Id || (a.Role == Roles.Inspector && a.CenterId == x.CenterId && x.InspectorId == a.Id) || (a.Role == Roles.Admin && (a.CenterId == null || x.CenterId == a.CenterId)))
+                .Where(x => (from == null || x.Started >= from) && (to == null || x.Started < to) && (estado == null || x.State == estado))
                 .OrderByDescending(x => x.Started).ThenBy(x => x.Id).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h)).ToListAsync(ct)).Select(Response)
+            };
         }).Document<ItemsResponse<InspectionResponse>>("ListarInspecciones", "CU-05 / CU-10");
         g.MapPost("", Start).Interactive().Document<InspectionResponse>("IniciarInspeccion", "RF-INS-01 / PA-05b", 201)
             .Validated<StartInspectionRequest>(v => v.RuleFor(x => x.CitaId).NotEmpty());
@@ -63,27 +64,14 @@ public static class InspectionEndpoints
         {
             actor.RequirePermission(Permissions.Rules); if (actor.CenterId is not null) AppActor.Deny(); await db.LockAsync("rules", ct);
             if (r.VigenciaUtc < clock.GetUtcNow()) throw ApiContract.Invalid("La vigencia no puede ser retroactiva.");
+            var effective = r.VigenciaUtc.ToUniversalTime();
+            var previous = await db.Rules.Where(x => x.Effective <= effective).OrderByDescending(x => x.Effective).Select(x => new { version = x.Version, m = x.MaxMinor }).FirstAsync(ct);
             var rule = new InspectionRule { MaxMinor = r.M, Effective = r.VigenciaUtc.ToUniversalTime(), ActorId = actor.Id, Version = "V" + (await db.Rules.CountAsync(ct) + 1) };
+            db.Audit.Add(new() { ActorId = actor.Id, At = clock.GetUtcNow(), Operation = "CAMBIO_REGLAS", Entity = rule.Id.ToString(), Correlation = h.TraceIdentifier,
+                Outcome = ApiReply.Serialize(new { anterior = previous, nuevo = new { version = rule.Version, m = rule.MaxMinor, vigenciaUtc = rule.Effective } }) });
             db.Rules.Add(rule); return ApiReply.Created("/api/configuracion/reglas-inspeccion", new { rule.Id, version = rule.Version, m = rule.MaxMinor, vigenciaUtc = rule.Effective });
         })).Interactive().Document<RuleResponse>("CrearVersionReglas", "RAE-02 / PA-05b", 201).Validated<NewRuleRequest>(v => v.RuleFor(x => x.M).GreaterThanOrEqualTo(0));
     }
-
-    private static async Task<ApiReply> Start(StartInspectionRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
-    {
-        actor.RequireRole(Roles.Inspector);
-        var a = await db.Appointments.SingleOrDefaultAsync(x => x.Id == r.CitaId, ct) ?? throw ApiContract.Missing();
-        await db.LockAsync("center:" + a.CenterId, ct); await db.LockAsync("rules", ct); await db.Entry(a).ReloadAsync(ct);
-        if (a.InspectorId != actor.Id || actor.CenterId != a.CenterId) AppActor.Deny();
-        if (a.State != "CONFIRMADA" || !await db.Payments.AnyAsync(x => x.Id == a.AttemptId && x.State == "APROBADO", ct)) throw ApiContract.Conflict("CITA_NO_CONFIRMADA", "La cita no está disponible para iniciar.");
-        var rule = await db.Rules.Where(x => x.Effective <= clock.GetUtcNow()).OrderByDescending(x => x.Effective).FirstAsync(ct);
-        var vehicle = await db.Vehicles.AsNoTracking().SingleAsync(x => x.Id == a.VehicleId, ct);
-        var center = await db.Centers.AsNoTracking().SingleAsync(x => x.Id == a.CenterId, ct);
-        var i = new Inspection { AppointmentId = a.Id, OwnerId = a.UserId, VehicleId = a.VehicleId, CenterId = a.CenterId, RampId = a.RampId, InspectorId = actor.Id, PreviousId = a.PreviousInspectionId,
-            Started = clock.GetUtcNow(), RuleVersion = rule.Version, MaxMinor = rule.MaxMinor, MongoId = ObjectId.GenerateNewId().ToString(), VehicleSnapshot = ApiReply.Serialize(VehicleEndpoints.Response(vehicle)),
-            CenterSnapshot = ApiReply.Serialize(new { nombre = center.Name, direccion = center.Address }) };
-        db.Inspections.Add(i); a.State = "EN_INSPECCION";
-        return ApiReply.Created($"/api/inspecciones/{i.Id}", Response(i));
-    }, true);
 
     private static async Task<Inspection> Editable(Guid id, int version, AutoCheckDb db, AppActor actor, CancellationToken ct)
     {
@@ -94,25 +82,5 @@ public static class InspectionEndpoints
         if (i.Revision != version) throw ApiContract.Conflict("VERSION_DESACTUALIZADA", "Actualiza la inspección antes de guardar.");
         return i;
     }
-    private static async Task<ApiReply> Register(Guid id, RegisterDefectsRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation) => await mutation.Run(h, r, async ct =>
-    {
-        var i = await Editable(id, r.VersionEsperada, db, actor, ct); var counts = InspectionRules.Count(r.Defectos);
-        i.Defects = ApiReply.Serialize(r.Defectos); i.Minor = counts.L; i.Medium = counts.Md; i.Serious = counts.G; i.Revision++;
-        return ApiReply.Ok(Response(i));
-    });
-    private static async Task<ApiReply> Close(Guid id, CloseInspectionRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock, AutoCheck.Api.Features.Certificados.CertificateIssuer issuer) => await mutation.Run(h, r, async ct =>
-    {
-        var i = await Editable(id, r.VersionEsperada, db, actor, ct);
-        if (i.Defects is null) throw ApiContract.Conflict("INSPECCION_INCOMPLETA", "Registra los defectos, incluso la lista vacía si no hay defectos.");
-        i.Result = InspectionRules.Verdict(i.Minor, i.Medium, i.Serious, i.MaxMinor); i.State = "CERRADA"; i.Closed = clock.GetUtcNow(); i.Revision++;
-        var appointment = await db.Appointments.SingleAsync(x => x.Id == i.AppointmentId, ct); appointment.State = "COMPLETADA";
-        db.Outbox.Add(new() { Kind = "COPIA_MONGO", AggregateId = i.Id, Available = clock.GetUtcNow() });
-        if (i.Result == "Aprobado")
-        {
-            // Reserve identity and manifest durably before any attempt to render/sign the PDF.
-            await issuer.Reserve(i.Id, ct);
-            db.Outbox.Add(new() { Kind = "CERTIFICADO", AggregateId = i.Id, Available = clock.GetUtcNow() });
-        }
-        return ApiReply.Ok(Response(i));
-    }, true);
+
 }

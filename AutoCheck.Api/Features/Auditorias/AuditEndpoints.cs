@@ -11,7 +11,9 @@ public static class AuditEndpoints
         a.RequirePermission(Permissions.Audit);
         // Events may contain cross-center security operations; their consultation is global only.
         if (a.CenterId is not null) AppActor.Deny();
-        return new { items = await db.Audit.AsNoTracking().Where(x => (desdeUtc == null || x.At >= desdeUtc) && (hastaUtc == null || x.At <= hastaUtc) &&
+        var from = desdeUtc?.ToUniversalTime(); var to = hastaUtc?.ToUniversalTime();
+        if (from > to) throw ApiContract.Invalid("Rango de fechas inválido.");
+        return new { items = await db.Audit.AsNoTracking().Where(x => (from == null || x.At >= from) && (to == null || x.At <= to) &&
             (operacion == null || x.Operation == operacion) && (entidad == null || x.Entity == entidad) && (actorId == null || x.ActorId == actorId))
             .OrderByDescending(x => x.At).ThenBy(x => x.Id).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h))
             .Select(x => new { x.Id, actorId = x.ActorId, fechaUtc = x.At, operacion = x.Operation, entidad = x.Entity, resultado = x.Outcome, correlacion = x.Correlation }).ToListAsync(ct) };

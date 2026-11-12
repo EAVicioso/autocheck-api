@@ -1,3 +1,4 @@
+// AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
 using System.Security.Claims;

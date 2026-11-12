@@ -18,7 +18,7 @@ dotnet run --project AutoCheck.Api -- --migrate
 dotnet run --project AutoCheck.Api
 ```
 
-Las migraciones se aplican únicamente con `--migrate`, nunca al iniciar el servidor normalmente. Revisar el destino antes de ejecutar el comando. `/health` comprueba el proceso; `/health/ready` comprueba PostgreSQL. OpenAPI: `/openapi/v1.json` en desarrollo o con `OpenApi__Enabled=true`.
+Las migraciones se aplican únicamente con `--migrate`, nunca al iniciar el servidor normalmente. Revisar el destino antes de ejecutar el comando. `/health` comprueba el proceso; `/health/ready` comprueba PostgreSQL y que no queden migraciones pendientes. OpenAPI: `/openapi/v1.json` en desarrollo o con `OpenApi__Enabled=true`.
 
 La primera cuenta administrativa se vincula a una identidad **ya creada y verificada en Supabase**: configurar `Bootstrap__AuthId` y `Bootstrap__Email`, y ejecutar `dotnet run --project AutoCheck.Api -- --bootstrap-admin`. Este comando es administrativo, no un endpoint público. Los demás usuarios se registran como ciudadanos; el administrador cambia los accesos de inspectores y administradores locales.
 

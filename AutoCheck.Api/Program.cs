@@ -21,8 +21,13 @@ var migrate = args.Contains("--migrate"); var bootstrap = args.Contains("--boots
 var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-admin").ToArray());
 builder.Services.AddOpenApi(o => o.AddBearerContracts());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
-builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddDbContext<AutoCheckDb>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Postgres") ?? "Host=localhost;Database=autocheck"));
+builder.Services.AddSingleton<TimeProvider, ServerClock>();
+builder.Services.AddDbContext<AutoCheckDb>(o =>
+{
+    var connection = new Npgsql.NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("Postgres") ?? "Host=localhost;Database=autocheck");
+    if (!connection.ContainsKey("Maximum Pool Size")) connection.MaxPoolSize = 20;
+    o.UseNpgsql(connection.ConnectionString);
+});
 builder.Services.AddScoped<AppActor>(); builder.Services.AddScoped<Mutation>();
 builder.Services.AddScoped<PaymentWorkflow>(); builder.Services.AddSingleton<IPaymentSandbox, AcademicPaymentSandbox>();
 builder.Services.AddScoped<CertificateIssuer>(); builder.Services.AddSingleton<IAcademicPdf, AcademicPdf>();
@@ -52,6 +57,10 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = 429;
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(h =>
+        h.User.Identity?.IsAuthenticated == true && new[] { "POST", "PUT", "PATCH", "DELETE" }.Contains(h.Request.Method)
+            ? RateLimitPartition.GetFixedWindowLimiter(h.User.FindFirst("sub")?.Value ?? "authenticated", _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+            : RateLimitPartition.GetNoLimiter("read"));
     o.AddPolicy("auth", h => RateLimitPartition.GetFixedWindowLimiter(h.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     o.AddPolicy("public", h => RateLimitPartition.GetFixedWindowLimiter(h.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
@@ -85,7 +94,9 @@ app.UseCors("frontend");
 app.UseAuthentication(); app.UseMiddleware<SessionGuard>(); app.UseAuthorization(); app.UseRateLimiter();
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing") || app.Configuration.GetValue<bool>("OpenApi:Enabled")) app.MapOpenApi();
 app.MapGet("/health", (TimeProvider clock) => Results.Ok(new { status = "Healthy", timestamp = clock.GetUtcNow() })).WithName("HealthCheck");
-app.MapGet("/health/ready", async (AutoCheckDb db, CancellationToken ct) => await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "Ready" }) : Results.StatusCode(503)).WithName("Readiness");
+app.MapGet("/health/ready", async (AutoCheckDb db, CancellationToken ct) =>
+    await db.Database.CanConnectAsync(ct) && !(await db.Database.GetPendingMigrationsAsync(ct)).Any()
+        ? Results.Ok(new { status = "Ready" }) : Results.StatusCode(503)).WithName("Readiness");
 app.MapAuth(); app.MapUsers(); app.MapVehicles(); app.MapCenters(); app.MapAppointments(); app.MapPayments(); app.MapInspections(); app.MapCertificates(); app.MapReports(); app.MapAudit(); app.MapAssistance();
 app.Run();
 

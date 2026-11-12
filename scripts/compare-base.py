@@ -72,10 +72,13 @@ with tempfile.TemporaryDirectory(prefix='autocheck-base-') as folder:
             if list((baseline / 'AutoCheck.Api').rglob('*ModelSnapshot.cs')):
                 build(baseline)
                 run(['dotnet', 'run', '--no-build', '--no-launch-profile', '-c', 'Release', '--project', 'AutoCheck.Api', '--', '--migrate'], baseline)
+                run(['psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'autocheck_tests_upgrade', '-v', 'ON_ERROR_STOP=1', '-f', str(root / 'scripts' / 'seed-upgrade.sql')], env={**os.environ, 'PGPASSWORD': 'postgres'})
             # A sentinel checks that an upgrade does not replace the database.
             run(['psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'autocheck_tests_upgrade', '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE TABLE IF NOT EXISTS public.ci_sentinel (id integer primary key); INSERT INTO public.ci_sentinel VALUES (1) ON CONFLICT DO NOTHING;'], env={**os.environ, 'PGPASSWORD': 'postgres'})
             build(root)
             run(['dotnet', 'run', '--no-build', '--no-launch-profile', '-c', 'Release', '--project', 'AutoCheck.Api', '--', '--migrate'])
+            if list((baseline / 'AutoCheck.Api').rglob('*ModelSnapshot.cs')):
+                run(['psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'autocheck_tests_upgrade', '-v', 'ON_ERROR_STOP=1', '-f', str(root / 'scripts' / 'verify-upgrade.sql')], env={**os.environ, 'PGPASSWORD': 'postgres'})
             run(['psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'autocheck_tests_upgrade', '-v', 'ON_ERROR_STOP=1', '-c', "DO $$ BEGIN IF (SELECT count(*) FROM public.ci_sentinel) <> 1 THEN RAISE EXCEPTION 'Upgrade lost existing data'; END IF; END $$;"], env={**os.environ, 'PGPASSWORD': 'postgres'})
         else:
             raise RuntimeError('Expected api or database')

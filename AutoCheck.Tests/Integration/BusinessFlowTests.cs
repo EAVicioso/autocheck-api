@@ -1,3 +1,4 @@
+// AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
@@ -19,6 +20,49 @@ namespace AutoCheck.Tests.Integration;
 [Trait("Category", "Integration")]
 public class BusinessFlowTests : DatabaseTest
 {
+    [IntegrationFact]
+    public async Task PA01_Registration_validates_and_prevents_duplicate_accounts()
+    {
+        using var anonymous = App.CreateClient();
+        var invalid = await anonymous.PostAsJsonAsync("/api/auth/registro", new { correo = "nuevo@example.test", contrasena = "abcdefgh", nombre = "Prueba" }); Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        var valid = await Json(await anonymous.PostAsJsonAsync("/api/auth/registro", new { correo = "nuevo@example.test", contrasena = "Abc12345", nombre = "Prueba" }), HttpStatusCode.Created);
+        Assert.Equal("ACTIVA", valid.GetProperty("estado").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, (await anonymous.PostAsJsonAsync("/api/auth/registro", new { correo = "nuevo@example.test", contrasena = "Abc12345", nombre = "Prueba" })).StatusCode);
+        var login = await Json(await anonymous.PostAsJsonAsync("/api/auth/login", new { correo = "nuevo@example.test", contrasena = "Abc12345" })); Assert.False(string.IsNullOrEmpty(login.GetProperty("accessToken").GetString()));
+    }
+
+    [IntegrationFact]
+    public async Task PA10_Other_owner_cannot_read_history_even_with_spoofed_admin_JWT_role()
+    {
+        using var anonymous = App.CreateClient();
+        await Json(await anonymous.PostAsJsonAsync("/api/auth/registro", new { correo = "otro@example.test", contrasena = "Abc12345", nombre = "Otro" }), HttpStatusCode.Created);
+        var login = await Json(await anonymous.PostAsJsonAsync("/api/auth/login", new { correo = "otro@example.test", contrasena = "Abc12345" }));
+        anonymous.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", login.GetProperty("accessToken").GetString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await anonymous.GetAsync($"/api/vehiculos/{VehicleId}/historial")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Inspector.GetAsync($"/api/vehiculos/{VehicleId}/historial")).StatusCode);
+    }
+
+    [IntegrationFact]
+    public async Task PA08_Aggregation_is_idempotent_and_filters_do_not_expose_other_centers()
+    {
+        await WithDb(async db =>
+        {
+            for (var n = 0; n < 10; n++)
+            {
+                var payment = new PaymentAttempt { UserId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, Starts = Starts.AddMinutes(n * 30), Expires = App.Clock.Now.AddMinutes(5), State = "APROBADO" };
+                var appointment = new Appointment { AttemptId = payment.Id, UserId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, Starts = payment.Starts, State = "COMPLETADA" };
+                db.Payments.Add(payment); db.Appointments.Add(appointment);
+                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, InspectorId = InspectorId,
+                    Closed = App.Clock.Now.AddSeconds(n), Started = App.Clock.Now, State = "CERRADA", Result = n < 8 ? "Aprobado" : "Rechazado", Defects = n < 8 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 8 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
+            }
+            await db.SaveChangesAsync(); return true;
+        });
+        for (var n = 0; n < 2; n++) { using var scope = App.Services.CreateScope(); await scope.ServiceProvider.GetRequiredService<AutoCheck.Api.Features.Reportes.ReportConsolidator>().Run(default); }
+        var metrics = await Json(await Administrator.GetAsync($"/api/reportes/inspecciones?desde=2026-11-11&hasta=2026-11-11&centroId={CenterId}"));
+        Assert.Equal(10, metrics.GetProperty("cerradas").GetInt32()); Assert.Equal(20, metrics.GetProperty("porcentajeRechazo").GetDouble());
+        var empty = await Json(await Administrator.GetAsync($"/api/reportes/inspecciones?desde=2026-11-10&hasta=2026-11-10")); Assert.Equal("Sin datos", empty.GetProperty("estado").GetString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await Citizen.GetAsync("/api/reportes/inspecciones")).StatusCode);
+    }
     [IntegrationFact]
     public void PA10_RestAssured_checks_the_real_HTTP_contract()
     {
@@ -95,6 +139,8 @@ public class BusinessFlowTests : DatabaseTest
         var first = await Json(await Send(Citizen, HttpMethod.Post, $"/api/citas/{id}/cancelacion", new { motivo = "Prueba" }, "cancel"));
         var second = await Json(await Send(Citizen, HttpMethod.Post, $"/api/citas/{id}/cancelacion", new { motivo = "Prueba" }, "cancel2"));
         Assert.Equal(first.GetProperty("reversionId").GetGuid(), second.GetProperty("reversionId").GetGuid()); Assert.Equal(0, await WithDb(db => db.Blocks.CountAsync()));
+        var filtered = await Json(await Citizen.GetAsync("/api/citas?estado=CANCELADA&desde=2026-11-12&hasta=2026-11-12")); Assert.Single(filtered.GetProperty("items").EnumerateArray());
+        var otherDay = await Json(await Citizen.GetAsync("/api/citas?desde=2026-11-13&hasta=2026-11-13")); Assert.Empty(otherDay.GetProperty("items").EnumerateArray());
     }
     [IntegrationFact]
     public async Task PA12b_Active_hold_prevents_ramp_deactivation()
@@ -207,5 +253,29 @@ public class BusinessFlowTests : DatabaseTest
         for (var n = 0; n < 5; n++) { using var scope = App.Services.CreateScope(); await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchOne(default); }
         Assert.Equal(certificateId, await WithDb(db => db.Certificates.Select(x => x.Id).SingleAsync())); Assert.Single(App.Archive.Documents);
         Assert.True(await WithDb(db => db.Outbox.AnyAsync(x => x.Kind == "COPIA_MONGO" && x.Completed != null)));
+    }
+
+    [IntegrationFact]
+    public async Task PA06c_Explicit_retry_and_background_issuer_follow_the_same_lock_order()
+    {
+        var hold = await Json(await Start(), HttpStatusCode.Created); var paid = await Webhook(hold.GetProperty("intentoId").GetGuid()); var appointment = paid.GetProperty("citaId").GetGuid();
+        await Json(await Send(Administrator, HttpMethod.Put, $"/api/citas/{appointment}/inspector", new { inspectorId = InspectorId }));
+        var started = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "start"), HttpStatusCode.Created); var id = started.GetProperty("id").GetGuid();
+        await Json(await Send(Inspector, HttpMethod.Put, $"/api/inspecciones/{id}/registro", new { versionEsperada = 0, defectos = Array.Empty<object>() }));
+        await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "close"));
+        using var scope = App.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<AutoCheckDb>(); await using var tx = await db.Database.BeginTransactionAsync();
+        await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Kind\"='CERTIFICADO' AND \"AggregateId\"={id} FOR UPDATE").SingleAsync();
+        var retry = Send(Citizen, HttpMethod.Post, $"/api/inspecciones/{id}/certificado", new { }, "retry");
+        var waiting = false;
+        for (var n = 0; n < 50 && !waiting; n++)
+        {
+            waiting = await WithDb(d => d.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%OutboxMessage%'").SingleAsync()) > 0;
+            if (!waiting) await Task.Delay(20);
+        }
+        Assert.True(waiting, "The API retry should be waiting on the outbox row before taking the inspection lock.");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await db.LockAsync("inspection:" + id, deadline.Token);
+        await scope.ServiceProvider.GetRequiredService<CertificateIssuer>().Complete(id, deadline.Token); await db.SaveChangesAsync(deadline.Token); await tx.CommitAsync(deadline.Token);
+        await Json(await retry.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 }

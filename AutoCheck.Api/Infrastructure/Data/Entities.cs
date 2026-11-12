@@ -94,6 +94,8 @@ public sealed class PaymentAttempt
     public string Scenario { get; set; } = "APROBADO";
     public Guid? PreviousInspectionId { get; set; }
     public Guid? ReversalId { get; set; }
+    public decimal Amount { get; set; } = 1000m;
+    public string Currency { get; set; } = "DOP";
 }
 
 public sealed class PaymentEvent

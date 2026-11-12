@@ -41,7 +41,7 @@ SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.js
 | PUT | `/api/citas/{id}/inspector` | CU-05 / 6.2.1.1 | 200, 400, 401, 403, 404, 409, 503 |
 | POST | `/api/pagos/intentos` | RF-CIT-01/03 / CU-04 / PA-03a,d | 201, 400, 401, 403, 404, 409, 503 |
 | GET | `/api/pagos/intentos/{id}` | CU-04 | 200, 400, 401, 403, 404, 409, 503 |
-| POST | `/api/pagos/webhook` | IS-03 / PA-04a,c | 200, 400, 401, 403, 404, 409, 503 |
+| POST | `/api/pagos/webhook` | IS-03 / PA-04a,c; X-Sandbox-Signature HMAC-SHA256 required | 200, 400, 401, 403, 404, 409, 503 |
 | GET | `/api/inspecciones` | CU-05 / CU-10 | 200, 400, 401, 403, 404, 409, 503 |
 | POST | `/api/inspecciones` | RF-INS-01 / PA-05b | 201, 400, 401, 403, 404, 409, 503 |
 | GET | `/api/inspecciones/{id}` | CU-05 / CU-10 | 200, 400, 401, 403, 404, 409, 503 |

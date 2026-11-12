@@ -14,10 +14,10 @@ public static class VehicleEndpoints
 
     public static void MapVehicles(this IEndpointRouteBuilder routes)
     {
-        routes.MapGet("/api/catalogos/{tipo}", async (string tipo, HttpContext h, AutoCheckDb db, CancellationToken ct) =>
+        routes.MapGet("/api/catalogos/{tipo}", async (string tipo, Guid? padreId, HttpContext h, AutoCheckDb db, CancellationToken ct) =>
         {
             if (!new[] { "marcas", "modelos", "colores", "categorias" }.Contains(tipo)) throw ApiContract.Missing();
-            return new { items = await db.Catalog.AsNoTracking().Where(x => x.Type == tipo).OrderBy(x => x.Name).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h))
+            return new { items = await db.Catalog.AsNoTracking().Where(x => x.Type == tipo && (padreId == null || x.ParentId == padreId)).OrderBy(x => x.Name).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h))
                 .Select(x => new { x.Id, nombre = x.Name, padreId = x.ParentId }).ToListAsync(ct) };
         }).RequireAuthorization().WithTags("Vehiculos").Document<ItemsResponse<CatalogResponse>>("ConsultarCatalogo", "IU-01");
         var g = routes.MapGroup("/api/vehiculos").WithTags("Vehiculos").RequireAuthorization();
