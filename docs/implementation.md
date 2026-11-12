@@ -18,13 +18,15 @@ Decisiones aprobadas en la planificación:
 
 | Responsable | Entrega completa | CU / PA |
 |---|---|---|
-| A | Auth, Usuarios/permisos, Vehículos/catálogos, Certificados, consulta de Auditoría y base CI | CU-01/02/06/07/11/13; PA-01/02/06/07/11/13 |
-| B | Centros/rampas/horarios, disponibilidad, Citas, retenciones, pagos sandbox, Notificaciones | CU-03/04/12; PA-03/04/12 |
-| C | Inspecciones/reglas, Reinspecciones/historial, MongoDB, Reportes y Chatbot | CU-05/08/09/10; PA-05/08/09/10 |
+| A — Sebastián Tavares | Auth, Usuarios/permisos, Vehículos/catálogos, Certificados, consulta de Auditoría y base CI | CU-01/02/06/07/11/13; PA-01/02/06/07/11/13 |
+| B — Manuel Polo | Centros/rampas/horarios, disponibilidad, Citas, retenciones, pagos sandbox, Notificaciones | CU-03/04/12; PA-03/04/12 |
+| C — Engels Vicioso | Inspecciones/reglas, Reinspecciones/historial, MongoDB, Reportes y Chatbot | CU-05/08/09/10; PA-05/08/09/10 |
 
 Cada persona entrega endpoint, DTO/validación, autorización por recurso, persistencia, auditoría y pruebas. B revisa a A, C revisa a B y A revisa a C. No se sustituyen las revisiones humanas por aprobaciones del bot.
 
 ## Contratos y vertical slices
+
+La convención de nuevas slices y su extracción incremental se define en la [guía compartida VSA/.NET 10/C# 14](architecture/AI_Backend_Architecture_Guidelines.md). Las observaciones de la revisión de Engels se siguen en [PR #1](reviews/pr-1-follow-up.md); no se consideran resueltas solo porque el PR esté fusionado.
 
 Las features están en `AutoCheck.Api/Features/`. Los flujos principales tienen carpetas por caso de uso, por ejemplo `Inspecciones/CerrarInspeccion` y `Pagos/IniciarPago`, con su request y handler. Los enrutadores del módulo registran rutas y validadores; la composición queda en `Program.cs`. Infraestructura compartida: `AutoCheckDb`, errores, identidad actual, reloj, transacción/idempotencia, outbox y adaptadores sustituibles. No hay repositorio genérico, MediatR ni llamadas HTTP entre features.
 

@@ -2,12 +2,16 @@
 
 Prototipo académico del INTEC, SRS aprobado 1.1. .NET 10 Minimal APIs, vertical slices, PostgreSQL/Supabase, outbox y proyección MongoDB. Pagos y certificados son académicos.
 
+- [Guía compartida VSA, .NET 10 y C# 14](docs/architecture/AI_Backend_Architecture_Guidelines.md)
 - [Implementación, decisiones y reparto A/B/C](docs/implementation.md)
+- [Observaciones de Engels y seguimiento del PR #1](docs/reviews/pr-1-follow-up.md)
 - [Endpoints y trazabilidad](docs/endpoints.md)
 - [Activar protección y revisión automática](docs/github-setup.md)
 - [Validación de rendimiento](tests/load/README.md)
 
 ## Desarrollo
+
+Responsables: **A Sebastián Tavares**, **B Manuel Polo**, **C Engels Vicioso**. La guía de arquitectura versionada es la fuente común para el equipo y sus agentes. Al clonar/actualizar el repositorio todos reciben el mismo contexto. Codex lo encuentra desde `AGENTS.md`, Copilot desde `.github/copilot-instructions.md`, Claude Code desde `CLAUDE.md`; con otros agentes, incluir explícitamente la guía en su contexto. Los enlaces no garantizan que toda herramienta la cargue automáticamente: comprobarlo al iniciar la tarea.
 
 Requiere el SDK de `global.json` y PostgreSQL 17. Configurar secretos mediante variables de entorno o `dotnet user-secrets` en el proyecto API; no editar el código con credenciales.
 
