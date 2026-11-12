@@ -56,13 +56,13 @@ jobs:
           POSTGRES_DB: autocheck_tests
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U postgres'
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 3s --health-retries 10
       mongo:
         image: mongo:8
         ports: ['27017:27017']
         options: >-
-          --health-cmd 'mongosh --quiet --eval "db.runCommand({ping:1})"'
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       AUTOCHECK_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=autocheck_tests;Username=postgres;Password=postgres
@@ -120,7 +120,7 @@ jobs:
           POSTGRES_DB: autocheck_tests_upgrade
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U postgres'
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       ConnectionStrings__Postgres: Host=127.0.0.1;Port=5432;Database=autocheck_tests_upgrade;Username=postgres;Password=postgres
