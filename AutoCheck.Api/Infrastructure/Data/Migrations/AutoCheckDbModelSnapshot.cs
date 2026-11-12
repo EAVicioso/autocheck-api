@@ -221,6 +221,8 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
 
                     b.HasKey("RampId", "Starts");
 
+                    b.HasIndex("State", "Expires");
+
                     b.ToTable("BookingBlock", "autocheck");
                 });
 

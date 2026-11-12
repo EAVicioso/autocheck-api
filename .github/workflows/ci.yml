@@ -144,7 +144,7 @@ jobs:
       - run: docker build -f AutoCheck.Api/Dockerfile -t autocheck-api:ci .
       - name: Verify container health
         run: |
-          docker run -d --name autocheck-ci -p 8080:8080 -e Workers__Enabled=false autocheck-api:ci
+          docker run -d --name autocheck-ci -p 8080:8080 -e Workers__Enabled=false -e 'ConnectionStrings__Postgres=Host=127.0.0.1;Database=autocheck_tests_contract;Username=postgres' autocheck-api:ci
           trap 'docker logs autocheck-ci; docker rm -f autocheck-ci' EXIT
           python scripts/wait-http.py http://127.0.0.1:8080/health
   dependency-review:

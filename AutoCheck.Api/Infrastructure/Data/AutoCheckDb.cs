@@ -44,6 +44,7 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options) : DbConte
         m.Entity<CenterSchedule>().HasKey(x => new { x.CenterId, x.Day });
         m.Entity<CenterSchedule>().HasOne<Center>().WithMany().HasForeignKey(x => x.CenterId).OnDelete(DeleteBehavior.Restrict);
         m.Entity<BookingBlock>().HasKey(x => new { x.RampId, x.Starts });
+        m.Entity<BookingBlock>().HasIndex(x => new { x.State, x.Expires });
         m.Entity<BookingBlock>().HasOne<Ramp>().WithMany().HasForeignKey(x => x.RampId).OnDelete(DeleteBehavior.Restrict);
         m.Entity<PaymentAttempt>().HasIndex(x => x.UserId);
         m.Entity<PaymentAttempt>().Property(x => x.Amount).HasPrecision(12, 2).HasDefaultValue(1000m);

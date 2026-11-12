@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>98ef43b8-5a55-4339-92d3-7137f65ecfd7</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,6 +14,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />
     <PackageReference Include="MongoDB.Driver" Version="3.13.0" />
     <PackageReference Include="PDFsharp" Version="6.2.2" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.20.0" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <PackageReference Include="QRCoder" Version="1.7.0" />
     <PackageReference Include="Google.GenAI" Version="1.27.0" />
@@ -31,6 +33,7 @@
 
   <ItemGroup>
     <Content Include="Assets/**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../certs/supabase-prod-ca-2021.crt" Link="certs/supabase-prod-ca-2021.crt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

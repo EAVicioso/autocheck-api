@@ -16,18 +16,15 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
 
-var migrate = args.Contains("--migrate"); var bootstrap = args.Contains("--bootstrap-admin");
-var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-admin").ToArray());
+var migrate = args.Contains("--migrate"); var bootstrap = args.Contains("--bootstrap-admin"); var checkDatabase = args.Contains("--check-database");
+var builder = WebApplication.CreateBuilder(args.Where(x => x is not ("--migrate" or "--bootstrap-admin" or "--check-database")).ToArray());
 builder.Services.AddOpenApi(o => o.AddBearerContracts());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddSingleton<TimeProvider, ServerClock>();
-builder.Services.AddDbContext<AutoCheckDb>(o =>
-{
-    var connection = new Npgsql.NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("Postgres") ?? "Host=localhost;Database=autocheck");
-    if (!connection.ContainsKey("Maximum Pool Size")) connection.MaxPoolSize = 20;
-    o.UseNpgsql(connection.ConnectionString);
-});
+builder.Services.AddDbContext<AutoCheckDb>((services, o) => o.UseNpgsql(
+    PostgresConnection.Resolve(services.GetRequiredService<IConfiguration>(), migrate)));
 builder.Services.AddScoped<AppActor>(); builder.Services.AddScoped<Mutation>();
 builder.Services.AddScoped<PaymentWorkflow>(); builder.Services.AddSingleton<IPaymentSandbox, AcademicPaymentSandbox>();
 builder.Services.AddScoped<CertificateIssuer>(); builder.Services.AddSingleton<IAcademicPdf, AcademicPdf>();
@@ -66,10 +63,16 @@ builder.Services.AddRateLimiter(o =>
 });
 
 var app = builder.Build();
-if (migrate || bootstrap)
+if (migrate || bootstrap || checkDatabase)
 {
     using var scope = app.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<AutoCheckDb>();
     if (migrate) await db.Database.MigrateAsync();
+    if (checkDatabase)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var result = await DatabaseConnectivity.Verify(db, timeout.Token);
+        Console.WriteLine(JsonSerializer.Serialize(result));
+    }
     if (bootstrap)
     {
         var id = Guid.Parse(builder.Configuration["Bootstrap:AuthId"] ?? throw new InvalidOperationException("Bootstrap:AuthId is required."));
@@ -92,11 +95,17 @@ app.UseStatusCodePages(async context =>
 });
 app.UseCors("frontend");
 app.UseAuthentication(); app.UseMiddleware<SessionGuard>(); app.UseAuthorization(); app.UseRateLimiter();
-if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing") || app.Configuration.GetValue<bool>("OpenApi:Enabled")) app.MapOpenApi();
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing") || app.Configuration.GetValue<bool>("OpenApi:Enabled"))
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference("/scalar", options => options
+        .WithTitle("AutoCheck API — prototipo académico")
+        .AddPreferredSecuritySchemes("Bearer")
+        .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient));
+}
 app.MapGet("/health", (TimeProvider clock) => Results.Ok(new { status = "Healthy", timestamp = clock.GetUtcNow() })).WithName("HealthCheck");
-app.MapGet("/health/ready", async (AutoCheckDb db, CancellationToken ct) =>
-    await db.Database.CanConnectAsync(ct) && !(await db.Database.GetPendingMigrationsAsync(ct)).Any()
-        ? Results.Ok(new { status = "Ready" }) : Results.StatusCode(503)).WithName("Readiness");
+app.MapGet("/health/ready", DatabaseReadiness.Check).WithName("Readiness")
+    .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status503ServiceUnavailable);
 app.MapAuth(); app.MapUsers(); app.MapVehicles(); app.MapCenters(); app.MapAppointments(); app.MapPayments(); app.MapInspections(); app.MapCertificates(); app.MapReports(); app.MapAudit(); app.MapAssistance();
 app.Run();
 

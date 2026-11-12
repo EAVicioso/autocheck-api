@@ -651,6 +651,11 @@
           "System.Drawing.Common": "6.0.0"
         }
       },
+      "Scalar.AspNetCore": {
+        "type": "Transitive",
+        "resolved": "2.20.0",
+        "contentHash": "BQ7Pzt3BkM+U9qh63APQSgELutm7acoOfCBIjQlO5tHioi7+J9LZ0z2BK5fUBVazO4aWblghz1C4XwzqFhexxw=="
+      },
       "SendGrid": {
         "type": "Transitive",
         "resolved": "9.29.3",
@@ -778,6 +783,7 @@
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "PDFsharp": "[6.2.2, )",
           "QRCoder": "[1.7.0, )",
+          "Scalar.AspNetCore": "[2.20.0, )",
           "SendGrid": "[9.29.3, )",
           "System.Security.Cryptography.Pkcs": "[10.0.14, )"
         }
