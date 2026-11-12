@@ -480,3 +480,10 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+# Task-local tools and generated validation artifacts.
+.tools/
+artifacts/
+**/*.pfx
+**/*.pem
+.env
+TestResults/

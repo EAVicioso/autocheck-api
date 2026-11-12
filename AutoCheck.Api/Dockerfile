@@ -1,24 +1,25 @@
-# Etapa de ejecución con el runtime de .NET 10 parcheado
+# AutoCheck academic prototype, SRS 1.1. SDK and runtime match global.json.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 EXPOSE 8080
-EXPOSE 8081
+ENV ASPNETCORE_HTTP_PORTS=8080
 
-# Etapa de compilación con el SDK 10.0.14
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.403 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["AutoCheck.Api/AutoCheck.Api.csproj", "AutoCheck.Api/"]
-RUN dotnet restore "AutoCheck.Api/AutoCheck.Api.csproj"
+COPY global.json Directory.Build.props ./
+COPY AutoCheck.Api/AutoCheck.Api.csproj AutoCheck.Api/packages.lock.json AutoCheck.Api/
+RUN dotnet restore "AutoCheck.Api/AutoCheck.Api.csproj" --locked-mode
 COPY . .
 WORKDIR "/src/AutoCheck.Api"
-RUN dotnet build "AutoCheck.Api.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "AutoCheck.Api.csproj" -c $BUILD_CONFIGURATION --no-restore -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "AutoCheck.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "AutoCheck.Api.csproj" -c $BUILD_CONFIGURATION --no-restore -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+USER $APP_UID
 ENTRYPOINT ["dotnet", "AutoCheck.Api.dll"]

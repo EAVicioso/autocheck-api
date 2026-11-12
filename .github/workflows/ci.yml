@@ -1,0 +1,180 @@
+name: Backend CI
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: backend-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore AutoCheck.slnx --locked-mode
+      - run: dotnet build AutoCheck.slnx --no-restore -c Release -warnaserror
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore AutoCheck.slnx --locked-mode
+      - run: dotnet test AutoCheck.slnx -c Release --no-restore --filter 'Category!=Integration' --logger trx --results-directory TestResults
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: unit-results
+          path: TestResults
+          retention-days: 7
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: autocheck_tests
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      mongo:
+        image: mongo:8
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AUTOCHECK_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=autocheck_tests;Username=postgres;Password=postgres
+      AUTOCHECK_TEST_MONGO: mongodb://127.0.0.1:27017
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore AutoCheck.slnx --locked-mode
+      - run: dotnet test AutoCheck.slnx -c Release --no-restore --filter 'Category=Integration' --logger trx --results-directory TestResults
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: integration-results
+          path: TestResults
+          retention-days: 7
+  api-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - name: Export both contracts from running applications
+        run: python scripts/compare-base.py api
+      - name: Install verified oasdiff CLI
+        run: |
+          curl --fail --location --retry 3 https://github.com/oasdiff/oasdiff/releases/download/v1.37.0/oasdiff_1.37.0_linux_amd64.tar.gz -o /tmp/oasdiff.tar.gz
+          echo 'eac87307d31d08c36800c58a409c247f1c5db37fbb72e2544402f22a87cbca3c  /tmp/oasdiff.tar.gz' | sha256sum --check
+          tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
+      - run: /tmp/oasdiff breaking artifacts/base-openapi.json artifacts/current-openapi.json --fail-on ERR
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: api-contracts
+          path: artifacts/*openapi.json
+          retention-days: 7
+  database-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: autocheck_tests_upgrade
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      ConnectionStrings__Postgres: Host=127.0.0.1;Port=5432;Database=autocheck_tests_upgrade;Username=postgres;Password=postgres
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: python scripts/compare-base.py database
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: docker build -f AutoCheck.Api/Dockerfile -t autocheck-api:ci .
+      - name: Verify container health
+        run: |
+          docker run -d --name autocheck-ci -p 8080:8080 -e Workers__Enabled=false autocheck-api:ci
+          trap 'docker logs autocheck-ci; docker rm -f autocheck-ci' EXIT
+          python scripts/wait-http.py http://127.0.0.1:8080/health
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore AutoCheck.slnx --locked-mode
+      - run: dotnet package list --project AutoCheck.slnx --vulnerable --include-transitive --format json --no-restore > dependencies.json
+      - run: python scripts/check-dependencies.py dependencies.json
+  ci-required:
+    name: ci-required
+    if: always()
+    needs: [build, unit, integration, api-compatibility, database-compatibility, docker, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every validation to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          jobs = json.loads(os.environ['RESULTS'])
+          failures = {name: job['result'] for name, job in jobs.items() if job['result'] != 'success'}
+          if failures:
+              raise SystemExit(f'Required jobs did not succeed: {failures}')
+          PY
