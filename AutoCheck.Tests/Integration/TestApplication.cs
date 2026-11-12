@@ -82,7 +82,7 @@ public sealed class FakeAssistance : IAssistanceProvider
     }
 }
 
-public sealed class TestApplication(string connection) : WebApplicationFactory<Program>
+public sealed class TestApplication(string connection, bool workers = false) : WebApplicationFactory<Program>
 {
     public readonly string PfxPath = Path.Combine(Path.GetTempPath(), "autocheck-sign-" + Guid.NewGuid().ToString("N") + ".pfx");
     public readonly ControlledClock Clock = new();
@@ -92,7 +92,7 @@ public sealed class TestApplication(string connection) : WebApplicationFactory<P
     public readonly FakeAssistance Assistance = new();
     protected override void ConfigureWebHost(IWebHostBuilder b) => b.UseEnvironment("Testing").ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
     {
-        ["ConnectionStrings:Postgres"] = connection, ["Workers:Enabled"] = "false", ["Testing:JwtKey"] = FakeIdentity.JwtKey,
+        ["ConnectionStrings:Postgres"] = connection, ["Workers:Enabled"] = workers.ToString(), ["Testing:JwtKey"] = FakeIdentity.JwtKey,
         ["Supabase:Url"] = "https://example.test", ["Sandbox:WebhookSecret"] = "sandbox-for-isolated-tests-only-0123456789",
         ["Certificates:PfxPath"] = PfxPath, ["Certificates:PublicBaseUrl"] = "https://example.test"
     })).ConfigureServices(s =>
@@ -108,6 +108,7 @@ public sealed class TestApplication(string connection) : WebApplicationFactory<P
 
 public abstract class DatabaseTest : IAsyncLifetime
 {
+    protected virtual bool BackgroundWorkers => false;
     private string admin = "";
     private string database = "";
     protected TestApplication App = null!;
@@ -129,7 +130,7 @@ public abstract class DatabaseTest : IAsyncLifetime
             throw new InvalidOperationException("Tests accept only loopback PostgreSQL and an autocheck_tests database prefix.");
         builder.Database = "postgres"; admin = builder.ConnectionString; database = "autocheck_tests_" + Guid.NewGuid().ToString("N");
         await using (var c = new NpgsqlConnection(admin)) { await c.OpenAsync(); await using var q = new NpgsqlCommand($"CREATE DATABASE \"{database}\"", c); await q.ExecuteNonQueryAsync(); }
-        builder.Database = database; App = new(builder.ConnectionString);
+        builder.Database = database; App = new(builder.ConnectionString, BackgroundWorkers);
         using (var rsa = RSA.Create(2048))
         {
             var request = new CertificateRequest("CN=AutoCheck isolated academic test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
