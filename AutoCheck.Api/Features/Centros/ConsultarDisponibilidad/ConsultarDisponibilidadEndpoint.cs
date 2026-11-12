@@ -23,21 +23,22 @@ public static class ConsultarDisponibilidadEndpoint
         }
 
         var schedule = await db.Schedules.AsNoTracking().SingleOrDefaultAsync(x => x.CenterId == id && x.Day == (int)fecha.DayOfWeek, ct);
-        var result = new List<BlockResponse>();
         var now = clock.GetUtcNow();
         if (schedule is null)
         {
-            return new
-            {
-                bloques = result,
-                zonaHoraria = DominicanTime.Zone.Id
-            };
+            return new AvailabilityResponse([], DominicanTime.Zone.Id);
         }
 
         var ramps = await db.Ramps.AsNoTracking().Where(x => x.CenterId == id && x.Active).Select(x => x.Id).ToListAsync(ct);
         var start = DominicanTime.Start(fecha);
         var end = start.AddDays(1);
         var blocks = await db.Blocks.AsNoTracking().Where(x => ramps.Contains(x.RampId) && x.Starts >= start && x.Starts < end).ToListAsync(ct);
+        return new AvailabilityResponse(BuildBlocks(ramps, schedule, start, now, blocks).ToArray(), DominicanTime.Zone.Id);
+    }
+
+    private static IEnumerable<BlockResponse> BuildBlocks(List<Guid> ramps, CenterSchedule schedule, DateTimeOffset start, DateTimeOffset now, List<BookingBlock> blocks)
+    {
+        var lookup = blocks.ToDictionary(block => (block.RampId, block.Starts));
         foreach (var ramp in ramps)
         {
             for (var minute = schedule.Opens; minute + 30 <= schedule.Closes; minute += 30)
@@ -47,19 +48,18 @@ public static class ConsultarDisponibilidadEndpoint
                 {
                     continue;
                 }
-
-                var block = blocks.SingleOrDefault(x => x.RampId == ramp && x.Starts == at);
-                var state = block is null || (block.State == "RETENIDO" && block.Expires <= now) ? "LIBRE" : block.State;
-                result.Add(new(ramp, at, state, state == "RETENIDO" ? block!.Expires : null));
+                lookup.TryGetValue((ramp, at), out var block);
+                yield return DescribeBlock(ramp, at, block, now);
             }
         }
-
-        return new
-        {
-            bloques = result,
-            zonaHoraria = DominicanTime.Zone.Id
-        };
     }
+
+    private static BlockResponse DescribeBlock(Guid ramp, DateTimeOffset at, BookingBlock? block, DateTimeOffset now)
+    {
+        var state = block is null || (block.State == "RETENIDO" && block.Expires <= now) ? "LIBRE" : block.State;
+        return new(ramp, at, state, state == "RETENIDO" ? block!.Expires : null);
+    }
+
 }
 
 public sealed record AvailabilityResponse(IReadOnlyList<BlockResponse> Bloques, string ZonaHoraria);

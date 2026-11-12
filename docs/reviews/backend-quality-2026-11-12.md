@@ -21,7 +21,7 @@ El build opcional genera `artifacts/analysis/AutoCheck.Api.sarif` y `AutoCheck.T
 
 ## Cobertura de carpetas
 
-Se inventariaron 127 fuentes de la API (incluidas nueve generadas) y 11 de pruebas. El análisis de compilación cubre ambos proyectos completos. Se revisó cada recurso con sus subcarpetas de casos y `Common`; los routers dejaron de contener reglas y consultas.
+Se inventariaron 128 fuentes de la API (incluidas nueve generadas) y 11 de pruebas. El análisis de compilación cubre ambos proyectos completos. Se revisó cada recurso con sus subcarpetas de casos y `Common`; los routers dejaron de contener reglas y consultas.
 
 | Carpeta | Revisión y resultado |
 |---|---|

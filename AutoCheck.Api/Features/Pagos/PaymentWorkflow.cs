@@ -58,25 +58,30 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
         }
         else
         {
-            if (e.Resultado == "APROBADO")
-            {
-                payment.State = "REVERTIDO";
-                payment.ReversalId ??= Guid.NewGuid();
-            }
-            else if (payment.State == "PENDIENTE")
-            {
-                payment.State = e.Resultado;
-            }
-
-            if (block?.AttemptId == payment.Id && block.State == "RETENIDO")
-            {
-                db.Blocks.Remove(block);
-            }
+            ApplyUnconfirmedResult(payment, block, e.Resultado);
         }
 
         db.Audit.Add(new() { At = clock.GetUtcNow(), Operation = payment.ReversalId is null ? "PAGO" : "REVERSION", Entity = payment.Id.ToString(), Outcome = payment.State, Correlation = correlation });
         db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = payment.CenterId }) });
         return await State(payment, ct);
+    }
+
+    private void ApplyUnconfirmedResult(PaymentAttempt payment, BookingBlock? block, string outcome)
+    {
+        if (outcome == "APROBADO")
+        {
+            payment.State = "REVERTIDO";
+            payment.ReversalId ??= Guid.NewGuid();
+        }
+        else if (payment.State == "PENDIENTE")
+        {
+            payment.State = outcome;
+        }
+
+        if (block?.AttemptId == payment.Id && block.State == "RETENIDO")
+        {
+            db.Blocks.Remove(block);
+        }
     }
 
     public async Task<PaymentStateResponse> State(PaymentAttempt p, CancellationToken ct)

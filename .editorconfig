@@ -12,6 +12,7 @@ csharp_style_prefer_primary_constructors = true:suggestion
 csharp_style_prefer_collection_expression = when_types_loosely_match:suggestion
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
+dotnet_diagnostic.S3776.severity = warning
 
 # EF emits migrations and the snapshot. Keep generated schema history unchanged;
 # review its SQL and exercise migrations in PostgreSQL instead of applying style fixes.

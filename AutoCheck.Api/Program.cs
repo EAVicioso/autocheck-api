@@ -28,9 +28,7 @@ using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 
 var migrate = args.Contains("--migrate");
-var bootstrap = args.Contains("--bootstrap-admin");
-var checkDatabase = args.Contains("--check-database");
-var builder = WebApplication.CreateBuilder(args.Where(x => x is not ("--migrate" or "--bootstrap-admin" or "--check-database")).ToArray());
+var builder = WebApplication.CreateBuilder(args.Where(argument => !DatabaseCommands.IsCommand(argument)).ToArray());
 builder.Services.AddOpenApi(o => o.AddBearerContracts());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddSingleton<TimeProvider, ServerClock>();
@@ -87,45 +85,9 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("public", h => RateLimitPartition.GetFixedWindowLimiter(h.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 var app = builder.Build();
-if (migrate || bootstrap || checkDatabase)
+if (args.Any(DatabaseCommands.IsCommand))
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<AutoCheckDb>();
-    if (migrate)
-    {
-        await db.Database.MigrateAsync();
-    }
-
-    if (checkDatabase)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var result = await DatabaseConnectivity.Verify(db, timeout.Token);
-        Console.WriteLine(JsonSerializer.Serialize(result));
-    }
-
-    if (bootstrap)
-    {
-        var id = Guid.Parse(builder.Configuration["Bootstrap:AuthId"] ?? throw new InvalidOperationException("Bootstrap:AuthId is required."));
-        var email = ApiContract.NormalizeEmail(builder.Configuration["Bootstrap:Email"] ?? throw new InvalidOperationException("Bootstrap:Email is required."));
-        var user = await db.Users.SingleOrDefaultAsync(x => x.AuthId == id);
-        if (user is null)
-        {
-            user = new()
-            {
-                AuthId = id,
-                Email = email,
-                Name = "Administrador"
-            };
-            db.Users.Add(user);
-        }
-
-        user.Role = Roles.Admin;
-        user.CenterId = null;
-        user.Permissions = Permissions.All.ToArray();
-        db.Audit.Add(new() { At = DateTimeOffset.UtcNow, Operation = "BOOTSTRAP_ADMIN", Entity = user.Id.ToString(), Outcome = "CONFIGURADO", Correlation = Guid.NewGuid().ToString() });
-        await db.SaveChangesAsync();
-    }
-
+    await DatabaseCommands.Run(app, args);
     return;
 }
 

@@ -33,28 +33,7 @@ public static class IniciarPagoEndpoint
             AppActor.Deny();
         }
 
-        if (!await db.Centers.AnyAsync(x => x.Id == r.CentroId && x.Active, ct) || !await db.Ramps.AnyAsync(x => x.Id == r.RampaId && x.CenterId == r.CentroId && x.Active, ct))
-        {
-            throw ApiContract.Invalid("Centro o rampa no disponible.");
-        }
-
-        var local = TimeZoneInfo.ConvertTime(r.InicioUtc, DominicanTime.Zone);
-        if (r.InicioUtc <= now || r.InicioUtc.UtcTicks % TimeSpan.FromMinutes(30).Ticks != 0)
-        {
-            throw ApiContract.Invalid("Selecciona un bloque futuro de 30 minutos.");
-        }
-
-        var schedule = await db.Schedules.SingleOrDefaultAsync(x => x.CenterId == r.CentroId && x.Day == (int)local.DayOfWeek, ct);
-        var minute = local.Hour * 60 + local.Minute;
-        if (schedule is null || minute < schedule.Opens || minute + 30 > schedule.Closes)
-        {
-            throw ApiContract.Invalid("El bloque está fuera del horario del centro.");
-        }
-
-        if (r.InspeccionAnteriorId is not null && !await db.Inspections.AnyAsync(x => x.Id == r.InspeccionAnteriorId && x.VehicleId == r.VehiculoId && x.OwnerId == actor.Id && x.Result == "Rechazado", ct))
-        {
-            throw ApiContract.Invalid("La reinspección requiere un rechazo anterior del mismo vehículo.");
-        }
+        await ValidateReservation(r, actor.Id, now, db, ct);
 
         var block = await db.Blocks.SingleOrDefaultAsync(x => x.RampId == r.RampaId && x.Starts == r.InicioUtc.ToUniversalTime(), ct);
         if (block is not null && !(block.State == "RETENIDO" && block.Expires <= now))
@@ -97,6 +76,33 @@ public static class IniciarPagoEndpoint
         db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = now, Payload = ApiReply.Serialize(new { centroId = r.CentroId }) });
         return ApiReply.Created($"/api/pagos/intentos/{p.Id}", new HoldResponse(p.Id, p.Id, "RETENIDO", p.Expires, p.Amount, p.Currency));
     }, idempotent: true);
+
+    private static async Task ValidateReservation(StartPaymentRequest r, Guid ownerId, DateTimeOffset now, AutoCheckDb db, CancellationToken ct)
+    {
+        if (!await db.Centers.AnyAsync(x => x.Id == r.CentroId && x.Active, ct) || !await db.Ramps.AnyAsync(x => x.Id == r.RampaId && x.CenterId == r.CentroId && x.Active, ct))
+        {
+            throw ApiContract.Invalid("Centro o rampa no disponible.");
+        }
+
+        var local = TimeZoneInfo.ConvertTime(r.InicioUtc, DominicanTime.Zone);
+        if (r.InicioUtc <= now || r.InicioUtc.UtcTicks % TimeSpan.FromMinutes(30).Ticks != 0)
+        {
+            throw ApiContract.Invalid("Selecciona un bloque futuro de 30 minutos.");
+        }
+
+        var schedule = await db.Schedules.SingleOrDefaultAsync(x => x.CenterId == r.CentroId && x.Day == (int)local.DayOfWeek, ct);
+        var minute = local.Hour * 60 + local.Minute;
+        if (schedule is null || minute < schedule.Opens || minute + 30 > schedule.Closes)
+        {
+            throw ApiContract.Invalid("El bloque está fuera del horario del centro.");
+        }
+
+        if (r.InspeccionAnteriorId is not null && !await db.Inspections.AnyAsync(x => x.Id == r.InspeccionAnteriorId && x.VehicleId == r.VehiculoId && x.OwnerId == ownerId && x.Result == "Rechazado", ct))
+        {
+            throw ApiContract.Invalid("La reinspección requiere un rechazo anterior del mismo vehículo.");
+        }
+
+    }
 }
 
 public sealed record HoldResponse(Guid IntentoId, Guid RetencionId, string Estado, DateTimeOffset ExpiraUtc, decimal Monto, string Moneda);
