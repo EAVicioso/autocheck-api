@@ -15,7 +15,7 @@ public static class RenovarSesionEndpoint
         var tokens = await provider.Refresh(r.RefreshToken, ct) ?? throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
         var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == tokens.SessionId, ct);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.AuthId == tokens.AuthId, ct);
-        if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || clock.GetUtcNow() - session.LastActivity >= TimeSpan.FromHours(1))
+        if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || clock.GetUtcNow() - session.LastActivity >= TimeSpan.FromHours(1))
         {
             throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró.");
         }

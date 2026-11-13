@@ -37,6 +37,8 @@ builder.Services.AddSingleton<TimeProvider, ServerClock>();
 builder.Services.AddDbContext<AutoCheckDb>((services, o) => o.UseNpgsql(PostgresConnection.Resolve(services.GetRequiredService<IConfiguration>(), migrate)));
 builder.Services.AddScoped<AppActor>();
 builder.Services.AddScoped<Mutation>();
+builder.Services.AddScoped<PasswordResetRevocation>();
+builder.Services.AddScoped<AutoCheck.Api.Features.Auth.RestablecerContrasena.RestablecerContrasenaHandler>();
 builder.Services.AddScoped<PaymentWorkflow>();
 builder.Services.AddSingleton<IPaymentSandbox, AcademicPaymentSandbox>();
 builder.Services.AddScoped<CertificateIssuer>();

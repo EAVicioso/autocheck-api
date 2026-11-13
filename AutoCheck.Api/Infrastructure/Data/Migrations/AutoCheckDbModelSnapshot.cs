@@ -110,6 +110,9 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
                     b.Property<bool>("Revoked")
                         .HasColumnType("boolean");
 
+                    b.Property<long>("SecurityVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
@@ -576,6 +579,42 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
                     b.ToTable("OutboxMessage", "autocheck");
                 });
 
+            modelBuilder.Entity("AutoCheck.Api.Infrastructure.Data.PasswordResetOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Correlation")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("Finished")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("Started")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"State\" = 'PENDING'");
+
+                    b.ToTable("PasswordResetOperation", "autocheck", t =>
+                        {
+                            t.HasCheckConstraint("valid_password_reset_state", "(\"State\" = 'PENDING' AND \"Finished\" IS NULL) OR (\"State\" IN ('COMPLETED', 'REJECTED', 'REVOKED_UNCERTAIN') AND \"Finished\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("AutoCheck.Api.Infrastructure.Data.PaymentAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -702,6 +741,9 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("PasswordResetPending")
+                        .HasColumnType("boolean");
+
                     b.PrimitiveCollection<string[]>("Permissions")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -713,6 +755,9 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<long>("SessionVersion")
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -832,6 +877,15 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
                         .WithMany()
                         .HasForeignKey("PreviousId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AutoCheck.Api.Infrastructure.Data.PasswordResetOperation", b =>
+                {
+                    b.HasOne("AutoCheck.Api.Infrastructure.Data.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AutoCheck.Api.Infrastructure.Data.PaymentAttempt", b =>

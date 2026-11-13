@@ -76,7 +76,7 @@ public sealed class SessionGuard(RequestDelegate next)
             var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId, context.RequestAborted);
             var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.AuthId == subject, context.RequestAborted);
             var now = clock.GetUtcNow();
-            if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || now - session.LastActivity >= TimeSpan.FromHours(1))
+            if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1))
             {
                 throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
             }

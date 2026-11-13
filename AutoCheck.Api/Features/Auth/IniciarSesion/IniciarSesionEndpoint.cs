@@ -17,6 +17,7 @@ public static class IniciarSesionEndpoint
     private static async Task<IResult> HandleAsync(LoginRequest r, HttpContext h, AutoCheckDb db, IIdentityProvider provider, TimeProvider clock, CancellationToken ct)
     {
         var email = ApiContract.NormalizeEmail(r.Correo);
+        var securityVersion = await db.Users.AsNoTracking().Where(x => x.Email == email).Select(x => (long?)x.SessionVersion).SingleOrDefaultAsync(ct) ?? 0;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.LockAsync("account:" + email, ct);
         var counter = await db.AccountLocks.FindAsync([email], ct);
@@ -70,13 +71,23 @@ public static class IniciarSesionEndpoint
             db.Users.Add(user);
         }
 
+        await db.LockAsync("session-security:" + session.AuthId, ct);
+        if (db.Entry(user).State != EntityState.Added)
+        {
+            await db.Entry(user).ReloadAsync(ct);
+        }
+        if (user.PasswordResetPending || user.SessionVersion != securityVersion)
+        {
+            throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
+        }
+
         if (!user.Active)
         {
             AppActor.Deny();
         }
 
         counter.Failures = 0;
-        db.Sessions.Add(new() { Id = session.SessionId, UserId = user.Id, LastActivity = now });
+        db.Sessions.Add(new() { Id = session.SessionId, UserId = user.Id, LastActivity = now, SecurityVersion = user.SessionVersion });
         db.Audit.Add(new() { ActorId = user.Id, At = now, Operation = "LOGIN", Entity = session.SessionId.ToString(), Outcome = "AUTORIZADO", Correlation = h.TraceIdentifier });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

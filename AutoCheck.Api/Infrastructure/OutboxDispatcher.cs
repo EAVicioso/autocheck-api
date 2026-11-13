@@ -7,7 +7,7 @@ using AutoCheck.Api.Features.Reportes.Common;
 
 namespace AutoCheck.Api.Infrastructure;
 
-public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspectionArchive archive, IAppointmentNotifications notifications, IAvailabilityPublisher availability, IPaymentSandbox sandbox, PaymentWorkflow payments, CertificateIssuer certificates, ILogger<OutboxDispatcher> logger)
+public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspectionArchive archive, IAppointmentNotifications notifications, IAvailabilityPublisher availability, IPaymentSandbox sandbox, PaymentWorkflow payments, CertificateIssuer certificates, PasswordResetRevocation passwordResets, ILogger<OutboxDispatcher> logger)
 {
     public async Task<bool> DispatchOne(CancellationToken ct, string? kind = null)
     {
@@ -25,6 +25,9 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
             var outcome = "ENTREGADO";
             switch (message.Kind)
             {
+                case PasswordResetStates.DeliveryKind:
+                    await passwordResets.Reconcile(message.AggregateId, PasswordResetStates.Uncertain, ct);
+                    break;
                 case "PAGO_SANDBOX":
                     var p = await db.Payments.SingleAsync(x => x.Id == message.AggregateId, ct);
                     var e = await sandbox.Process(p, ct);
@@ -90,7 +93,7 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
 
 public sealed class BackgroundDelivery(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<BackgroundDelivery> logger) : BackgroundService
 {
-    private static readonly string[] DeliveryKinds = ["PAGO_SANDBOX", "CERTIFICADO", "COPIA_MONGO", "CITA_CONFIRMADA", "CITA_CANCELADA", "DISPONIBILIDAD"];
+    private static readonly string[] DeliveryKinds = ["PAGO_SANDBOX", "CERTIFICADO", "COPIA_MONGO", "CITA_CONFIRMADA", "CITA_CANCELADA", "DISPONIBILIDAD", PasswordResetStates.DeliveryKind];
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Workers:Enabled", true) || string.IsNullOrWhiteSpace(config.GetConnectionString("Postgres")))

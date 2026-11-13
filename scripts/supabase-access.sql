@@ -35,7 +35,7 @@ GRANT USAGE ON SCHEMA autocheck TO autocheck_api;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA autocheck TO autocheck_api;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA autocheck TO autocheck_api;
 REVOKE UPDATE, DELETE ON autocheck."AuditEvent", autocheck."InspectionRule" FROM autocheck_api;
-REVOKE DELETE ON autocheck."Certificate" FROM autocheck_api;
+REVOKE DELETE ON autocheck."Certificate", autocheck."PasswordResetOperation" FROM autocheck_api;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA autocheck TO autocheck_api;
 REVOKE ALL ON public."__EFMigrationsHistory" FROM PUBLIC, anon, authenticated, autocheck_api;
 GRANT SELECT ON public."__EFMigrationsHistory" TO autocheck_api;

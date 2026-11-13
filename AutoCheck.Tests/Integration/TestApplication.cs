@@ -45,6 +45,12 @@ public sealed class FakeIdentity : IIdentityProvider
 {
     public const string JwtKey = "autocheck-isolated-tests-only-signing-key-0123456789";
     public Dictionary<string, (Guid Id, string Password)> Accounts { get; } = [];
+    public Func<CancellationToken, Task>? BeforeReset { get; set; }
+    public Func<CancellationToken, Task>? AfterReset { get; set; }
+    public Func<Task>? AfterLogin { get; set; }
+    public bool RejectReset { get; set; }
+    public bool UncertainReset { get; set; }
+    public int ResetCalls { get; private set; }
 
     public static string Token(Guid authId, Guid sessionId, string role = "Administrador") => new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer: "https://example.test/auth/v1", audience: "authenticated", claims: [new("sub", authId.ToString()), new("session_id", sessionId.ToString()), new("role", role)], expires: DateTime.UtcNow.AddHours(1), signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey)), SecurityAlgorithms.HmacSha256)));
     public Task<ProviderRegistration> Register(string email, string password, CancellationToken ct)
@@ -54,28 +60,58 @@ public sealed class FakeIdentity : IIdentityProvider
         return Task.FromResult(new ProviderRegistration(id, false));
     }
 
-    public Task<ProviderSession?> Login(string email, string password, CancellationToken ct)
+    public async Task<ProviderSession?> Login(string email, string password, CancellationToken ct)
     {
         if (!Accounts.TryGetValue(email, out var account) || account.Password != password)
         {
-            return Task.FromResult<ProviderSession?>(null);
+            return null;
         }
 
         var session = Guid.NewGuid();
-        return Task.FromResult<ProviderSession?>(new(account.Id, session, Token(account.Id, session), session.ToString(), 3600));
+        var result = new ProviderSession(account.Id, session, Token(account.Id, session), session.ToString(), 3600);
+        if (AfterLogin is not null)
+        {
+            await AfterLogin();
+        }
+        return result;
     }
 
     public Task<ProviderSession?> Refresh(string refreshToken, CancellationToken ct) => Task.FromResult<ProviderSession?>(null);
     public Task Recover(string email, CancellationToken ct) => Task.CompletedTask;
-    public Task<Guid> Reset(string recoveryToken, string password, CancellationToken ct)
+    public Task<Guid> ValidateRecovery(string recoveryToken, CancellationToken ct)
     {
+        if (!Accounts.TryGetValue(recoveryToken, out var account))
+        {
+            throw new ApiException(401, "RECUPERACION_INVALIDA", "Token sintético inválido.");
+        }
+        return Task.FromResult(account.Id);
+    }
+    public async Task<Guid> Reset(string recoveryToken, string password, CancellationToken ct)
+    {
+        ResetCalls++;
+        if (BeforeReset is not null)
+        {
+            await BeforeReset(ct);
+        }
+        if (RejectReset)
+        {
+            throw new RecoveryRejectedException();
+        }
         if (!Accounts.TryGetValue(recoveryToken, out var account))
         {
             throw new ApiException(401, "RECUPERACION_INVALIDA", "Token sintético inválido.");
         }
 
         Accounts[recoveryToken] = (account.Id, password);
-        return Task.FromResult(account.Id);
+        if (AfterReset is not null)
+        {
+            await AfterReset(ct);
+        }
+        if (UncertainReset)
+        {
+            throw new HttpRequestException("Synthetic uncertain Auth outcome.");
+        }
+        return account.Id;
     }
 
     public Task Logout(string accessToken, CancellationToken ct) => Task.CompletedTask;
@@ -140,9 +176,11 @@ public sealed class TestApplication(string connection, bool workers = false) : W
     public FakeArchive Archive { get; } = new();
     public FakeNotifications Notifications { get; } = new();
     public FakeAssistance Assistance { get; } = new();
+    public ResetConnectionFailure ResetConnection { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseEnvironment("Testing").ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Postgres"] = connection, ["Workers:Enabled"] = workers.ToString(), ["Testing:JwtKey"] = FakeIdentity.JwtKey, ["Supabase:Url"] = "https://example.test", ["Sandbox:WebhookSecret"] = "sandbox-for-isolated-tests-only-0123456789", ["Certificates:PfxPath"] = PfxPath, ["Certificates:PublicBaseUrl"] = "https://example.test" })).ConfigureServices(s =>
     {
+        s.AddDbContext<AutoCheckDb>(options => options.AddInterceptors(ResetConnection));
         s.RemoveAll<TimeProvider>();
         s.AddSingleton<TimeProvider>(Clock);
         s.RemoveAll<IIdentityProvider>();
@@ -161,6 +199,7 @@ public sealed class TestApplication(string connection, bool workers = false) : W
 public abstract class DatabaseTest : IAsyncLifetime, IAsyncDisposable
 {
     protected virtual bool BackgroundWorkers => false;
+    protected virtual Task BeforeMigrations(AutoCheckDb db) => Task.CompletedTask;
 
     private string admin = "";
     private string database = "";
@@ -210,6 +249,7 @@ public abstract class DatabaseTest : IAsyncLifetime, IAsyncDisposable
         Administrator = App.CreateClient();
         using var scope = App.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AutoCheckDb>();
+        await BeforeMigrations(db);
         await db.Database.MigrateAsync();
         db.Centers.Add(new() { Id = CenterId, Name = "Centro sintético", Address = "Dirección de prueba" });
         db.Ramps.Add(new() { Id = RampId, CenterId = CenterId, Name = "R1" });

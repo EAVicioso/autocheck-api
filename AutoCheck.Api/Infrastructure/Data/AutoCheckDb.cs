@@ -6,6 +6,7 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options) : DbConte
     public DbSet<UserAccount> Users => Set<UserAccount>();
     public DbSet<AccountLock> AccountLocks => Set<AccountLock>();
     public DbSet<AppSession> Sessions => Set<AppSession>();
+    public DbSet<PasswordResetOperation> PasswordResets => Set<PasswordResetOperation>();
     public DbSet<CatalogItem> Catalog => Set<CatalogItem>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<Center> Centers => Set<Center>();
@@ -34,6 +35,11 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options) : DbConte
         modelBuilder.Entity<UserAccount>().HasOne<Center>().WithMany().HasForeignKey(x => x.CenterId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<AccountLock>().HasKey(x => x.Email);
         modelBuilder.Entity<AppSession>().HasOne<UserAccount>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PasswordResetOperation>().HasOne<UserAccount>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PasswordResetOperation>().HasIndex(x => x.UserId).IsUnique().HasFilter("\"State\" = 'PENDING'");
+        modelBuilder.Entity<PasswordResetOperation>().Property(x => x.State).HasMaxLength(24);
+        modelBuilder.Entity<PasswordResetOperation>().ToTable(table => table.HasCheckConstraint("valid_password_reset_state",
+            "(\"State\" = 'PENDING' AND \"Finished\" IS NULL) OR (\"State\" IN ('COMPLETED', 'REJECTED', 'REVOKED_UNCERTAIN') AND \"Finished\" IS NOT NULL)"));
         modelBuilder.Entity<Vehicle>().HasIndex(x => x.Vin).IsUnique();
         modelBuilder.Entity<Vehicle>().HasIndex(x => x.Plate).IsUnique();
         modelBuilder.Entity<Vehicle>().HasIndex(x => x.OwnerId);
