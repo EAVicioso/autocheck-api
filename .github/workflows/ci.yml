@@ -27,7 +27,7 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore AutoCheck.slnx --locked-mode
       - run: dotnet build AutoCheck.slnx --no-restore -c Release -warnaserror -p:AutoCheckEmitAnalysis=true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: static-analysis
@@ -45,7 +45,7 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore AutoCheck.slnx --locked-mode
       - run: dotnet test AutoCheck.slnx -c Release --no-restore --filter 'Category!=Integration' --logger trx --results-directory TestResults
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: unit-results
@@ -82,7 +82,7 @@ jobs:
           global-json-file: global.json
       - run: dotnet restore AutoCheck.slnx --locked-mode
       - run: dotnet test AutoCheck.slnx -c Release --no-restore --filter 'Category=Integration' --logger trx --results-directory TestResults
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: integration-results
@@ -109,7 +109,7 @@ jobs:
           echo 'eac87307d31d08c36800c58a409c247f1c5db37fbb72e2544402f22a87cbca3c  /tmp/oasdiff.tar.gz' | sha256sum --check
           tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
       - run: /tmp/oasdiff breaking artifacts/base-openapi.json artifacts/current-openapi.json --fail-on ERR
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: api-contracts
