@@ -13,7 +13,8 @@ public interface IIdentityProvider
     Task<ProviderSession?> Login(string email, string password, CancellationToken ct);
     Task<ProviderSession?> Refresh(string refreshToken, CancellationToken ct);
     Task Recover(string email, CancellationToken ct);
-    Task Reset(string recoveryToken, string password, CancellationToken ct);
+    Task<Guid> ValidateRecovery(string recoveryToken, CancellationToken ct);
+    Task<Guid> Reset(string recoveryToken, string password, CancellationToken ct);
     Task Logout(string accessToken, CancellationToken ct);
 }
 
@@ -23,18 +24,34 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     {
         var url = configuration["Supabase:Url"];
         var key = configuration["Supabase:PublishableKey"];
-        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(key)) throw ApiContract.Unavailable();
+        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(key) || !Uri.TryCreate(url, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+        {
+            throw ApiContract.Unavailable();
+        }
+
         using var request = new HttpRequestMessage(method, url.TrimEnd('/') + "/auth/v1/" + path);
         request.Headers.Add("apikey", key);
-        if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        if (body is not null) request.Content = JsonContent.Create(body);
+        if (token is not null)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body);
+        }
+
         return await http.SendAsync(request, ct);
     }
 
     public async Task<ProviderRegistration> Register(string email, string password, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "signup", new { email, password }, ct);
-        if (!response.IsSuccessStatusCode) throw ApiContract.Invalid("No se pudo registrar la cuenta. Revisa el correo y la contraseña.");
+        if (!response.IsSuccessStatusCode)
+        {
+            throw ApiContract.Invalid("No se pudo registrar la cuenta. Revisa el correo y la contraseña.");
+        }
+
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         var root = json.RootElement;
         var user = root.TryGetProperty("user", out var nested) ? nested : root;
@@ -46,30 +63,76 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     private async Task<ProviderSession?> Tokens(string grant, object body, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "token?grant_type=" + grant, body, ct);
-        if ((int)response.StatusCode >= 500 || (int)response.StatusCode == 429) throw ApiContract.Unavailable();
-        if (!response.IsSuccessStatusCode) return null;
+        if ((int)response.StatusCode >= 500 || (int)response.StatusCode == 429)
+        {
+            throw ApiContract.Unavailable();
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         var root = json.RootElement;
         var access = root.GetProperty("access_token").GetString()!;
         // This token arrived directly from the trusted HTTPS provider, never from a client assertion.
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(access);
-        return new(Guid.Parse(jwt.Subject), Guid.Parse(jwt.Claims.Single(x => x.Type == "session_id").Value), access,
-            root.GetProperty("refresh_token").GetString()!, root.GetProperty("expires_in").GetInt32());
+        return new(Guid.Parse(jwt.Subject), Guid.Parse(jwt.Claims.Single(x => x.Type == "session_id").Value), access, root.GetProperty("refresh_token").GetString()!, root.GetProperty("expires_in").GetInt32());
     }
 
     public async Task Recover(string email, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "recover", new { email }, ct);
-        if ((int)response.StatusCode >= 500) throw ApiContract.Unavailable();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw ApiContract.Unavailable();
+        }
     }
-    public async Task Reset(string recoveryToken, string password, CancellationToken ct)
+
+    public async Task<Guid> Reset(string recoveryToken, string password, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Put, "user", new { password }, ct, recoveryToken);
-        if (!response.IsSuccessStatusCode) throw new ApiException(401, "RECUPERACION_INVALIDA", "El enlace de recuperación no es válido.");
+        if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 422)
+        {
+            throw new RecoveryRejectedException();
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw ApiContract.Unavailable();
+        }
+
+        // Identity comes from the authenticated provider response, never decoded
+        // client JWT claims or a user-supplied id.
+        using var result = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        return result.RootElement.GetProperty("id").GetGuid();
     }
+
+    public async Task<Guid> ValidateRecovery(string recoveryToken, CancellationToken ct)
+    {
+        // GET /user validates the bearer token at Auth without changing the password.
+        using var response = await Send(HttpMethod.Get, "user", null, ct, recoveryToken);
+        if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 422)
+        {
+            throw new ApiException(401, "RECUPERACION_INVALIDA", "El enlace de recuperación no es válido.");
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            throw ApiContract.Unavailable();
+        }
+        using var result = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        return result.RootElement.GetProperty("id").GetGuid();
+    }
+
     public async Task Logout(string accessToken, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "logout?scope=local", null, ct, accessToken);
-        if ((int)response.StatusCode >= 500) throw ApiContract.Unavailable();
+        if ((int)response.StatusCode >= 500)
+        {
+            throw ApiContract.Unavailable();
+        }
     }
 }
+
+public sealed class RecoveryRejectedException() : Exception("Auth rejected the password reset without applying it.");

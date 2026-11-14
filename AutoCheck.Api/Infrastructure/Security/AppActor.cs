@@ -33,10 +33,32 @@ public sealed class AppActor
     public string Role { get; set; } = "";
     public Guid? CenterId { get; set; }
     public string[] Granted { get; set; } = [];
-    public void RequireRole(string role) { if (Role != role) Deny(); }
-    public void RequirePermission(string permission) { if (Role != Roles.Admin || !Granted.Contains(permission)) Deny(); }
+
+    public void RequireRole(string role)
+    {
+        if (Role != role)
+        {
+            Deny();
+        }
+    }
+
+    public void RequirePermission(string permission)
+    {
+        if (Role != Roles.Admin || !Granted.Contains(permission))
+        {
+            Deny();
+        }
+    }
+
     public bool Manages(Guid center) => Role == Roles.Admin && (CenterId is null || CenterId == center);
-    public void RequireCenter(Guid center) { if (!Manages(center)) Deny(); }
+    public void RequireCenter(Guid center)
+    {
+        if (!Manages(center))
+        {
+            Deny();
+        }
+    }
+
     public static void Deny() => throw new ApiException(403, "ACCESO_DENEGADO", "No tienes permiso para esta operación.");
 }
 
@@ -47,28 +69,41 @@ public sealed class SessionGuard(RequestDelegate next)
         if (context.User.Identity?.IsAuthenticated == true && context.GetEndpoint()?.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() is null)
         {
             if (!Guid.TryParse(context.User.FindFirstValue("sub"), out var subject) || !Guid.TryParse(context.User.FindFirstValue("session_id"), out var sessionId))
+            {
                 throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
+            }
+
             var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId, context.RequestAborted);
             var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.AuthId == subject, context.RequestAborted);
             var now = clock.GetUtcNow();
-            if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || now - session.LastActivity >= TimeSpan.FromHours(1))
+            if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1))
+            {
                 throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
-            actor.Id = user.Id; actor.Role = user.Role; actor.Granted = user.Permissions; actor.CenterId = user.CenterId; actor.SessionId = sessionId;
+            }
+
+            actor.Id = user.Id;
+            actor.Role = user.Role;
+            actor.Granted = user.Permissions;
+            actor.CenterId = user.CenterId;
+            actor.SessionId = sessionId;
             // Discard provider-supplied business roles. The database is the authority.
             context.User = new ClaimsPrincipal(new ClaimsIdentity([new("sub", subject.ToString()), new("session_id", sessionId.ToString()), new(ClaimTypes.Role, user.Role)], "Application"));
             await next(context);
             // Explicit foreground actions only; GET polling and token refresh cannot extend inactivity.
-            if (context.Response.StatusCode < 400 && context.GetEndpoint()?.Metadata.GetMetadata<InteractiveOperation>() is not null)
-                await db.Sessions.Where(x => x.Id == sessionId && !x.Revoked && x.LastActivity < now)
-                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.LastActivity, now), context.RequestAborted);
+            if (context.Response.StatusCode < 400 && context.GetEndpoint()?.Metadata.GetMetadata<InteractiveOperation>()?.RefreshActivity == true)
+            {
+                await db.Sessions.Where(x => x.Id == sessionId && !x.Revoked && x.LastActivity < now).ExecuteUpdateAsync(s => s.SetProperty(x => x.LastActivity, now), context.RequestAborted);
+            }
+
             return;
         }
+
         await next(context);
     }
 }
 
-public sealed record InteractiveOperation;
+public sealed record InteractiveOperation(bool RefreshActivity);
 public static class InteractiveRoutes
 {
-    public static RouteHandlerBuilder Interactive(this RouteHandlerBuilder route) => route.WithMetadata(new InteractiveOperation());
+    public static RouteHandlerBuilder Interactive(this RouteHandlerBuilder route) => route.WithMetadata(new InteractiveOperation(true));
 }

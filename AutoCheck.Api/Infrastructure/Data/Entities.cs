@@ -12,6 +12,8 @@ public sealed class UserAccount
     public string[] Permissions { get; set; } = [];
     public Guid? CenterId { get; set; }
     public bool Active { get; set; } = true;
+    public long SessionVersion { get; set; }
+    public bool PasswordResetPending { get; set; }
 }
 
 public sealed class AccountLock
@@ -27,6 +29,7 @@ public sealed class AppSession
     public Guid UserId { get; set; }
     public DateTimeOffset LastActivity { get; set; }
     public bool Revoked { get; set; }
+    public long SecurityVersion { get; set; }
 }
 
 public sealed class CatalogItem

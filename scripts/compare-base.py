@@ -26,7 +26,8 @@ def build(path):
 
 def export(path, destination, port):
     env = os.environ.copy()
-    env.update(ASPNETCORE_ENVIRONMENT='Development', Workers__Enabled='false', OpenApi__Enabled='true')
+    env.update(ASPNETCORE_ENVIRONMENT='Development', Workers__Enabled='false', OpenApi__Enabled='true',
+               ConnectionStrings__Postgres='Host=127.0.0.1;Database=autocheck_tests_contract;Username=postgres')
     with tempfile.TemporaryFile() as logs:
         process = subprocess.Popen(['dotnet', 'run', '--no-build', '--no-launch-profile', '-c', 'Release', '--project', str(path / 'AutoCheck.Api'), '--urls', f'http://127.0.0.1:{port}'], cwd=path, env=env, stdout=logs, stderr=logs,
                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)

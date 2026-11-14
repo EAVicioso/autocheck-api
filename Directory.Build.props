@@ -3,5 +3,14 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <Deterministic>true</Deterministic>
+    <AnalysisLevel>10-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <ErrorLog Condition="'$(AutoCheckEmitAnalysis)' == 'true'">$(MSBuildProjectDirectory)/../artifacts/analysis/$(MSBuildProjectName).sarif</ErrorLog>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.36.0.15337" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="CreateAnalysisDirectory" BeforeTargets="CoreCompile" Condition="'$(AutoCheckEmitAnalysis)' == 'true'">
+    <MakeDir Directories="$(MSBuildProjectDirectory)/../artifacts/analysis" />
+  </Target>
 </Project>
