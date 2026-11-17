@@ -49,7 +49,7 @@ La primera cuenta administrativa se vincula a una identidad **ya creada y verifi
 | `ConnectionStrings__PostgresMigrations` | Conexión privilegiada separada, solo para migraciones/CLI EF. Nunca se usa para atender HTTP. |
 | `Supabase__Url`, `Supabase__PublishableKey` | Identidad; JWT firmados y claves JWKS rotativas. |
 | `Supabase__SecretKey` | Publicación REST de disponibilidad, solo en el servidor. |
-| `Mongo__ConnectionString` | Copia asíncrona en `autocheck_inspections_db.reportes_defectos`. |
+| `MongoDb__ConnectionString` | Copia asíncrona en `AutoCheckReports.Reports`. |
 | `Smtp__Host`, `Smtp__Port`, `Smtp__Transport` | Servidor SMTP con STARTTLS obligatorio o TLS directo. |
 | `Smtp__Username`, `Smtp__Password`, `Smtp__From`, `Smtp__SenderName` | Credencial Mail Send y remitente verificado para confirmaciones/cancelaciones; ver guía SMTP. |
 | `Gemini__ApiKey`, `Gemini__Model` | Asistencia; modelo predeterminado `gemini-2.5-flash`. |

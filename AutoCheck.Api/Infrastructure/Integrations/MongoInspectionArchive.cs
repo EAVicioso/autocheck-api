@@ -1,7 +1,4 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using MongoDB.Bson;
-using MongoDB.Driver;
 
 namespace AutoCheck.Api.Infrastructure;
 
@@ -14,19 +11,19 @@ public sealed class MongoInspectionArchive(MongoArchiveConnection connection) : 
 {
     public async Task Copy(Inspection inspection, CancellationToken ct)
     {
-        var collection = connection.Collection;
-        var snapshot = new BsonDocument
+        await using var db = connection.CreateContext();
+        var snapshot = new InspectionReport
         {
-            ["_id"] = ObjectId.Parse(inspection.MongoId),
-            ["inspeccionId"] = inspection.Id.ToString(),
-            ["defectos"] = BsonDocument.Parse("{\"items\":" + inspection.Defects + "}")["items"],
-            ["resultado"] = inspection.Result,
-            ["L"] = inspection.Minor,
-            ["Md"] = inspection.Medium,
-            ["G"] = inspection.Serious,
-            ["M"] = inspection.MaxMinor,
-            ["versionReglas"] = inspection.RuleVersion
+            Id = ObjectId.Parse(inspection.MongoId),
+            InspectionId = inspection.Id.ToString(),
+            Defects = JsonSerializer.Deserialize<List<ReportDefect>>(inspection.Defects ?? throw new InvalidOperationException("Missing closure defects."), ApiReply.JsonOptions)!,
+            Result = inspection.Result!,
+            Minor = inspection.Minor,
+            Medium = inspection.Medium,
+            Serious = inspection.Serious,
+            MaxMinor = inspection.MaxMinor,
+            RuleVersion = inspection.RuleVersion
         };
-        await collection.ReplaceOneAsync(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(inspection.MongoId)), snapshot, new ReplaceOptions { IsUpsert = true }, ct);
+        await db.Upsert(snapshot, ct);
     }
 }

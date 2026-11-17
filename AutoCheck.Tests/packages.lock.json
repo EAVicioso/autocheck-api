@@ -605,6 +605,15 @@
           "ZstdSharp.Port": "0.7.3"
         }
       },
+      "MongoDB.EntityFrameworkCore": {
+        "type": "Transitive",
+        "resolved": "10.0.5",
+        "contentHash": "i4HkMA8/rrhfPczHF/dWPdIDYZUnRfmi41lLZH9KB1ScbZFr1MIFqcUCERTQH8BlUSZHQ0pcnNlOdJakO7Zuow==",
+        "dependencies": {
+          "Microsoft.EntityFrameworkCore": "10.0.11",
+          "MongoDB.Driver": "3.11.2"
+        }
+      },
       "Namotion.Reflection": {
         "type": "Transitive",
         "resolved": "3.4.3",
@@ -786,6 +795,7 @@
           "Microsoft.EntityFrameworkCore": "[10.0.14, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.14, )",
           "MongoDB.Driver": "[3.13.0, )",
+          "MongoDB.EntityFrameworkCore": "[10.0.5, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "PDFsharp": "[6.2.2, )",
           "QRCoder": "[1.7.0, )",
