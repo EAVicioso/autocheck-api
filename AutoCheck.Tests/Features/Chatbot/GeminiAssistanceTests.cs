@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AutoCheck.Api.Features.Chatbot.Common;
+using AutoCheck.Api.Infrastructure;
 using Microsoft.Extensions.Configuration;
 
 namespace AutoCheck.Tests.Features.Chatbot;
@@ -40,14 +41,32 @@ public class GeminiAssistanceTests
     {
         using var handler = new ProviderHandler(output);
         using var http = new HttpClient(handler);
-        await Assert.ThrowsAnyAsync<Exception>(() => Create(http).Answer("Consulta", default));
+        if (output == "not-json")
+        {
+            await Assert.ThrowsAnyAsync<JsonException>(() => Create(http).Answer("Consulta", default));
+        }
+        else
+        {
+            await Assert.ThrowsAsync<ApiException>(() => Create(http).Answer("Consulta", default));
+        }
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task PA09NullProviderTextProducesUnavailableInsteadOfInternalError()
+    {
+        using var handler = new ProviderHandler(null);
+        using var http = new HttpClient(handler);
+        var error = await Assert.ThrowsAsync<ApiException>(() => Create(http).Answer("Consulta", default));
+        Assert.Equal(503, error.Status);
+        Assert.Equal("SERVICIO_NO_DISPONIBLE", error.Code);
         Assert.Equal(1, handler.Calls);
     }
 
     private static GeminiAssistance Create(HttpClient http) => new(http, new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?> { ["Gemini:ApiKey"] = "synthetic-isolated-test" }).Build());
 
-    private sealed class ProviderHandler(string output) : HttpMessageHandler
+    private sealed class ProviderHandler(string? output) : HttpMessageHandler
     {
         public int Calls { get; private set; }
         public string? Body { get; private set; }
