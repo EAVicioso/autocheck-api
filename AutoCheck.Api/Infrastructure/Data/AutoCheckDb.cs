@@ -66,6 +66,7 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options) : DbConte
         modelBuilder.Entity<InspectionRule>().HasIndex(x => x.Effective).IsUnique();
         modelBuilder.Entity<Inspection>().HasIndex(x => x.AppointmentId).IsUnique();
         modelBuilder.Entity<Inspection>().HasIndex(x => new { x.VehicleId, x.Closed });
+        modelBuilder.Entity<Inspection>().HasIndex(x => new { x.VehicleId, x.Started, x.Closed });
         modelBuilder.Entity<Inspection>().HasIndex(x => new { x.InspectorId, x.CenterId, x.Closed, x.Id });
         modelBuilder.Entity<Inspection>().HasOne<Appointment>().WithMany().HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Inspection>().HasOne<Inspection>().WithMany().HasForeignKey(x => x.PreviousId).OnDelete(DeleteBehavior.Restrict);

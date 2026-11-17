@@ -1,7 +1,7 @@
 // AutoCheck academic prototype, SRS 1.1; RF-INS-01 / PA-05.
 namespace AutoCheck.Api.Features.Inspecciones;
 
-public sealed record DefectEntry(string Descripcion, string Severidad, int Cantidad = 1);
+public sealed record DefectEntry(string Descripcion, string Severidad, int Cantidad = 1, string? Categoria = null, string? Subcategoria = null);
 public sealed record DefectCounts(int L, int Md, int G);
 public static class InspectionRules
 {

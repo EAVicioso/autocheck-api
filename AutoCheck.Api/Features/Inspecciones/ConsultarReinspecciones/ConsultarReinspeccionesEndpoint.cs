@@ -12,6 +12,10 @@ public static class ConsultarReinspeccionesEndpoint
     {
         endpoints.MapGet("/{id:guid}/reinspecciones", async (Guid id, HttpContext h, AutoCheckDb db, AppActor a, CancellationToken ct) =>
         {
+            if (a.Role == Roles.Admin)
+            {
+                a.RequirePermission(Permissions.Audit);
+            }
             var original = await db.Inspections.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw ApiContract.Missing();
             if (!CanRead(a, original))
             {

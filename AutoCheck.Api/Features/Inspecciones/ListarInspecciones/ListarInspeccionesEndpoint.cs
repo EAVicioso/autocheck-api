@@ -14,6 +14,10 @@ public static class ListarInspeccionesEndpoint
         {
             var (from, to) = ApiContract.UtcRange(desde, hasta);
             ApiContract.Filter(estado, "ABIERTA", "CERRADA");
+            if (a.Role == Roles.Admin)
+            {
+                a.RequirePermission(Permissions.Audit);
+            }
             return new
             {
                 items = (await db.Inspections.AsNoTracking().Where(x => x.OwnerId == a.Id || (a.Role == Roles.Inspector && a.CenterId == x.CenterId && x.InspectorId == a.Id) || (a.Role == Roles.Admin && (a.CenterId == null || x.CenterId == a.CenterId))).Where(x => (from == null || x.Started >= from) && (to == null || x.Started < to) && (estado == null || x.State == estado)).OrderByDescending(x => x.Started).ThenBy(x => x.Id).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h)).ToListAsync(ct)).Select(Response)

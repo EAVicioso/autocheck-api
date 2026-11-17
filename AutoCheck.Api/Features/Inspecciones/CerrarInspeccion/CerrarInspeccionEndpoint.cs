@@ -18,7 +18,7 @@ public static class CerrarInspeccionEndpoint
         var i = await Editable(id, r.VersionEsperada, db, actor, ct);
         if (i.Defects is null)
         {
-            throw ApiContract.Conflict("INSPECCION_INCOMPLETA", "Registra los defectos, incluso la lista vacía si no hay defectos.");
+            throw ApiContract.Invalid("Registra los defectos, incluso la lista vacía si no hay defectos.");
         }
 
         i.Result = InspectionRules.Verdict(i.Minor, i.Medium, i.Serious, i.MaxMinor);

@@ -19,6 +19,7 @@ public static class RegistrarDefectosEndpoint
                 d.RuleFor(x => x.Descripcion).NotEmpty().MaximumLength(300);
                 d.RuleFor(x => x.Severidad).Must(x => new[] { "Leve", "Mediano", "Grave" }.Contains(x));
                 d.RuleFor(x => x.Cantidad).InclusiveBetween(1, 100);
+                d.RuleFor(x => x).Must(x => DefectCatalog.Contains(x.Categoria, x.Subcategoria)).WithMessage("Categoría/subcategoría inválida según el catálogo académico V1.");
             });
         });
     }

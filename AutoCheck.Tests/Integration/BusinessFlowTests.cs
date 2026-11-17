@@ -21,7 +21,7 @@ using Npgsql;
 namespace AutoCheck.Tests.Integration;
 
 [Trait("Category", "Integration")]
-public class BusinessFlowTests : DatabaseTest
+public partial class BusinessFlowTests : DatabaseTest
 {
     [IntegrationFact]
     public async Task PA01RegistrationValidatesAndPreventsDuplicateAccounts()
@@ -262,7 +262,7 @@ public class BusinessFlowTests : DatabaseTest
         var started = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "start"), HttpStatusCode.Created);
         var inspection = started.GetProperty("id").GetGuid();
         var incomplete = await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{inspection}/cierre", new { versionEsperada = 0 }, "incomplete");
-        Assert.Equal(HttpStatusCode.Conflict, incomplete.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, incomplete.StatusCode);
         await Json(await Send(Inspector, HttpMethod.Put, $"/api/inspecciones/{inspection}/registro", new { versionEsperada = 0, defectos = Array.Empty<object>() }));
         var closed = await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{inspection}/cierre", new { versionEsperada = 1 }, "close"));
         Assert.Equal("Aprobado", closed.GetProperty("resultado").GetString());

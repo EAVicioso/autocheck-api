@@ -499,6 +499,8 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
 
                     b.HasIndex("VehicleId", "Closed");
 
+                    b.HasIndex("VehicleId", "Started", "Closed");
+
                     b.HasIndex("InspectorId", "CenterId", "Closed", "Id");
 
                     b.ToTable("Inspection", "autocheck");
