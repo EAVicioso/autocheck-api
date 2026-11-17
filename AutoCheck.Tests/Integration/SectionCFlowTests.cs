@@ -10,19 +10,50 @@ namespace AutoCheck.Tests.Integration;
 
 public partial class BusinessFlowTests
 {
-    private async Task<JsonElement> StartInspectionAt(int slot, Guid? previous = null)
+    private async Task<JsonElement> StartInspectionAt(int slot, Guid? previous = null, string? idempotencyKey = null)
     {
         var hold = await Json(await Send(Citizen, HttpMethod.Post, "/api/pagos/intentos",
             new StartPaymentRequest(VehicleId, CenterId, RampId, Starts.AddMinutes(30 * slot), previous), Guid.NewGuid().ToString()), HttpStatusCode.Created);
         var paid = await Webhook(hold.GetProperty("intentoId").GetGuid());
         var appointment = paid.GetProperty("citaId").GetGuid();
         await Json(await Send(Administrator, HttpMethod.Put, $"/api/citas/{appointment}/inspector", new { inspectorId = InspectorId }));
-        var key = Guid.NewGuid().ToString();
+        var key = idempotencyKey ?? Guid.NewGuid().ToString();
         var started = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, key), HttpStatusCode.Created);
         var replay = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, key), HttpStatusCode.Created);
         Assert.Equal(started.GetRawText(), replay.GetRawText());
         Assert.Equal(HttpStatusCode.Conflict, (await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = Guid.NewGuid() }, key)).StatusCode);
         return started;
+    }
+
+    [IntegrationFact]
+    public async Task PA05ReplaysRevalidateAssignmentAndCenterWithoutRepeatingEffects()
+    {
+        var first = await StartInspectionAt(0, idempotencyKey: "scope-start");
+        var id = first.GetProperty("id").GetGuid();
+        var appointment = await WithDb(db => db.Inspections.Where(x => x.Id == id).Select(x => x.AppointmentId).SingleAsync());
+        await WithDb(db => db.Appointments.Where(x => x.Id == appointment).ExecuteUpdateAsync(s => s.SetProperty(x => x.InspectorId, AdminId)));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "scope-start")).StatusCode);
+        await WithDb(db => db.Appointments.Where(x => x.Id == appointment).ExecuteUpdateAsync(s => s.SetProperty(x => x.InspectorId, InspectorId)));
+        await Json(await Inspector.PutAsJsonAsync($"/api/inspecciones/{id}/registro", new { versionEsperada = 0, defectos = Array.Empty<object>() }));
+        await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "scope-close"));
+        var events = await WithDb(db => db.Outbox.CountAsync());
+        var audits = await WithDb(db => db.Audit.CountAsync());
+        await WithDb(db => db.Users.Where(x => x.Id == InspectorId).ExecuteUpdateAsync(s => s.SetProperty(x => x.CenterId, (Guid?)null)));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "scope-start")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "scope-close")).StatusCode);
+        Assert.Equal(1, await WithDb(db => db.Inspections.CountAsync()));
+        Assert.Equal(events, await WithDb(db => db.Outbox.CountAsync()));
+        Assert.Equal(audits, await WithDb(db => db.Audit.CountAsync()));
+    }
+
+    [IntegrationFact]
+    public async Task PA08QueryIndexesExistAfterAdditiveMigration()
+    {
+        var names = await WithDb(db => db.Database.SqlQuery<string>($"SELECT indexname AS \"Value\" FROM pg_indexes WHERE schemaname = 'autocheck'").ToListAsync());
+        Assert.Contains("IX_AnomalyAlert_Day_Id", names);
+        Assert.Contains("IX_Inspection_Started_Id", names);
+        Assert.Contains("IX_Inspection_OwnerId_Started_Id", names);
+        Assert.Contains("IX_Inspection_InspectorId_CenterId_Started_Id", names);
     }
 
     [IntegrationFact]

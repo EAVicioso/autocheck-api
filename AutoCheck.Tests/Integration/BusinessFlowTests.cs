@@ -78,7 +78,7 @@ public partial class BusinessFlowTests : DatabaseTest
                 };
                 db.Payments.Add(payment);
                 db.Appointments.Add(appointment);
-                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = payment.RampId, InspectorId = InspectorId, Closed = App.Clock.Now.AddHours(-8).AddSeconds(n - 10), Started = App.Clock.Now.AddHours(-9), State = "CERRADA", Result = n < 20 ? "Aprobado" : "Rechazado", Defects = n < 20 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 20 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
+                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = payment.RampId, InspectorId = InspectorId, Closed = App.Clock.Now.AddHours(-8).AddSeconds(n / 2 - 5), Started = App.Clock.Now.AddHours(-9), State = "CERRADA", Result = n < 20 ? "Aprobado" : "Rechazado", Defects = n < 20 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 20 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
             }
 
             await db.SaveChangesAsync();
@@ -109,6 +109,11 @@ public partial class BusinessFlowTests : DatabaseTest
         Assert.Equal(21, item.GetProperty("inspecciones").GetArrayLength());
         Assert.Equal(100d * 20 / 21, item.GetProperty("porcentaje").GetDouble());
         Assert.Equal(JsonValueKind.String, filtered.GetProperty("ultimaActualizacionUtc").ValueKind);
+        using var history = await Citizen.GetAsync($"/api/vehiculos/{VehicleId}/historial?tamano=20");
+        var historyBody = await history.Content.ReadAsByteArrayAsync();
+        Assert.True(historyBody.Length <= 100 * 1024);
+        Assert.True(history.Headers.CacheControl?.NoStore);
+        Assert.Equal(20, (await Json(history)).GetProperty("items").GetArrayLength());
         Assert.Equal(HttpStatusCode.Forbidden, (await Citizen.GetAsync("/api/reportes/inspecciones")).StatusCode);
     }
 
@@ -403,7 +408,12 @@ public partial class BusinessFlowTests : DatabaseTest
     {
         var invalid = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " " }), HttpStatusCode.BadRequest);
         Assert.Equal(3, invalid.EnumerateObject().Count());
+        Assert.Equal("SOLICITUD_INVALIDA", invalid.GetProperty("codigo").GetString());
+        Assert.Equal("NO_DETERMINADA", invalid.GetProperty("categoria").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = new string('a', 2001) })).StatusCode);
         Assert.Equal(0, App.Assistance.Calls);
+        await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " " + new string('a', 2000) + " " }));
+        Assert.Equal(1, App.Assistance.Calls);
         foreach (var mode in new[]
         {
             "invalid",
@@ -419,6 +429,8 @@ public partial class BusinessFlowTests : DatabaseTest
             Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
             Assert.Equal(3, result.EnumerateObject().Count());
             Assert.Equal("SERVICIO_NO_DISPONIBLE", result.GetProperty("codigo").GetString());
+            Assert.Equal("NO_DETERMINADA", result.GetProperty("categoria").GetString());
+            Assert.Equal("El servicio de asistencia no está disponible temporalmente. Intenta de nuevo.", result.GetProperty("respuesta").GetString());
         }
     }
 
