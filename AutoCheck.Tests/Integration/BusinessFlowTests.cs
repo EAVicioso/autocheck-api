@@ -113,6 +113,50 @@ public partial class BusinessFlowTests : DatabaseTest
     }
 
     [IntegrationFact]
+    public async Task PA08LateCommitsRefreshAndInvalidatePreviouslyConsolidatedWindows()
+    {
+        var firstClose = App.Clock.Now.AddHours(-8);
+        for (var n = 0; n < 21; n++)
+        {
+            await AddReportInspection(n, n < 20, firstClose.AddSeconds(n));
+        }
+        await AssertReportReconciliation(21);
+        await AddReportInspection(21, true, firstClose.AddMilliseconds(500));
+        await AssertReportReconciliation(22);
+        await AddReportInspection(22, false, firstClose.AddMilliseconds(750));
+        await AssertReportReconciliation(23);
+    }
+
+    private Task<Guid> AddReportInspection(int slot, bool approved, DateTimeOffset closed) => WithDb(async db =>
+    {
+        var payment = new PaymentAttempt { UserId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, Starts = Starts.AddMinutes(slot * 30), Expires = App.Clock.Now, State = "APROBADO" };
+        var appointment = new Appointment { AttemptId = payment.Id, UserId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, Starts = payment.Starts, State = "COMPLETADA" };
+        var inspection = new Inspection { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, InspectorId = InspectorId, Started = closed.AddMinutes(-10), Closed = closed, State = "CERRADA", Result = approved ? "Aprobado" : "Rechazado", Defects = approved ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = approved ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() };
+        db.Payments.Add(payment);
+        db.Appointments.Add(appointment);
+        db.Inspections.Add(inspection);
+        await db.SaveChangesAsync();
+        return inspection.Id;
+    });
+
+    private async Task AssertReportReconciliation(int count)
+    {
+        using var scope = App.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<AutoCheck.Api.Features.Reportes.Common.ReportConsolidator>().Run(default);
+        var expected = await WithDb(async db => AutoCheck.Api.Features.Reportes.Common.AnomalyWindows.Build(await db.Inspections.ToListAsync()).ToArray());
+        var actual = await WithDb(db => db.Alerts.AsNoTracking().ToListAsync());
+        Assert.Equal(expected.Length, actual.Count);
+        foreach (var window in expected)
+        {
+            var alert = Assert.Single(actual, x => x.FinalInspectionId == window.FinalInspectionId);
+            Assert.Equal(window.InspectionIds, alert.InspectionIds);
+            Assert.Equal(window.Approved, alert.Approved);
+            Assert.Equal(window.From, alert.From);
+        }
+        Assert.Equal(count, await WithDb(db => db.Metrics.SumAsync(x => x.Approved + x.Rejected)));
+    }
+
+    [IntegrationFact]
     public async Task PA10RestAssuredChecksTheRealHTTPContract()
     {
         RestAssured.Dsl.Given().Header("Authorization", Citizen.DefaultRequestHeaders.Authorization!.ToString()).When().Get(new Uri(Citizen.BaseAddress!, "/api/usuarios/me").ToString()).Then().StatusCode(200);
