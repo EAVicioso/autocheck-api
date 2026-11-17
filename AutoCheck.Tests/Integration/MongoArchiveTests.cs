@@ -40,7 +40,8 @@ public class MongoArchiveTests
         var inspection = new Inspection
         {
             MongoId = id.ToString(),
-            Defects = "[]",
+            Defects = "[{\"categoria\":\"ALUMBRADO\",\"subcategoria\":\"FAROS\",\"descripcion\":\"Faro\",\"severidad\":\"Leve\",\"cantidad\":1}]",
+            Minor = 1,
             Result = "Aprobado",
             RuleVersion = "V1",
             MaxMinor = 3
@@ -49,15 +50,15 @@ public class MongoArchiveTests
         var filter = Builders<BsonDocument>.Filter.Eq("_id", id);
         try
         {
-            await archive.Copy(inspection, default);
-            await archive.Copy(inspection, default);
+            await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => archive.Copy(inspection, default)));
             Assert.Equal(1, await collection.CountDocumentsAsync(filter));
             await using var db = connection.CreateContext();
             await db.Database.EnsureCreatedAsync();
             var report = await db.Reports.AsNoTracking().SingleAsync(x => x.Id == id);
             Assert.Equal(inspection.Id.ToString(), report.InspectionId);
             Assert.Equal(3, report.MaxMinor);
-            Assert.Empty(report.Defects);
+            Assert.Equal("FAROS", Assert.Single(report.Defects).Subcategoria);
+            Assert.Equal(1, report.Minor);
         }
         finally
         {

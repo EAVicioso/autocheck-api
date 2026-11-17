@@ -26,6 +26,17 @@ public partial class BusinessFlowTests
     }
 
     [IntegrationFact]
+    public async Task PA05AcademicCatalogIsSeededWithParentReferences()
+    {
+        var categories = await WithDb(db => db.Catalog.AsNoTracking().Where(x => x.Type == "defectos-categorias-v1").ToListAsync());
+        var subcategories = await WithDb(db => db.Catalog.AsNoTracking().Where(x => x.Type == "defectos-subcategorias-v1").ToListAsync());
+        Assert.Equal(9, categories.Count);
+        Assert.Equal(18, subcategories.Count);
+        Assert.All(subcategories, sub => Assert.Contains(categories, category => category.Id == sub.ParentId
+            && AutoCheck.Api.Features.Inspecciones.Common.DefectCatalog.Contains(category.Name, sub.Name)));
+    }
+
+    [IntegrationFact]
     public async Task PA05FrozenRulesCatalogAndReinspectionRemainAuthoritative()
     {
         var first = await StartInspectionAt(0);
@@ -45,6 +56,8 @@ public partial class BusinessFlowTests
         Assert.Equal("V2", second.GetProperty("versionReglas").GetString());
         Assert.Equal(4, second.GetProperty("m").GetInt32());
         Assert.Equal(1, await WithDb(db => db.Outbox.CountAsync(x => x.Kind == "COPIA_MONGO")));
+        await WithDb(db => db.Users.Where(x => x.Id == InspectorId).ExecuteUpdateAsync(s => s.SetProperty(x => x.Role, Roles.Citizen)));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "c-close")).StatusCode);
     }
 
     [IntegrationFact]

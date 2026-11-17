@@ -27,7 +27,13 @@ Cada defecto exige `categoria`, `subcategoria`, descripción de 1–300 caracter
 entradas por registro. Lista vacía significa cero defectos; registro ausente impide cierre.
 V1 congela M=3: aprobado si G=0, Md<=1 y L<=M. Una nueva versión solo aplica a futuros inicios.
 La migración inicial existente ya siembra V1/M=3; no duplicar ese registro.
-Las categorías son referencias estáticas versionadas con la aplicación; no requieren tablas adicionales.
+La migración aditiva `SectionCDefectCatalog` siembra nueve categorías y dieciocho
+subcategorías en `CatalogItem`, tipos `defectos-categorias-v1` y
+`defectos-subcategorias-v1`, con UUID deterministas y `ON CONFLICT DO NOTHING`.
+Las subcategorías conservan `ParentId`; no se crean tablas adicionales ni se concede
+DDL al rol de ejecución. La validación usa las mismas referencias estáticas V1.
+Los IDs comienzan en `30000000` (categorías) y `40000000` (subcategorías).
+Un cambio futuro debe preservar V1 y añadir otra versión mediante migración revisada.
 
 ## Modelo conceptual y esquema activo
 

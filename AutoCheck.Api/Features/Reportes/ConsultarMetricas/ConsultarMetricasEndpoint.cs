@@ -1,3 +1,4 @@
+// AutoCheck / INTEC, SRS 1.1; Section C / PA-05/08/09/10. Version 1.0; history: Git.
 using AutoCheck.Api.Features.Reportes.Common;
 using static AutoCheck.Api.Features.Reportes.Common.ReportSupport;
 
