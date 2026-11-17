@@ -1,7 +1,7 @@
 # Catálogo académico de defectos y proyección de informes
 
-Versión: 1.0 · Fecha de emisión: 2026-11-16 · Autores: Engels Vicioso / Equipo AutoCheck.
-Historial de cambios: 1.0, definición inicial Sección C; modificaciones posteriores en Git.
+Versión: 1.1 · Fecha de emisión: 2026-11-17 · Autores: Engels Vicioso / Equipo AutoCheck.
+Historial de cambios: 1.0 definición Sección C; 1.1 aclaración de cantidad predeterminada; modificaciones posteriores en Git.
 
 ## Alcance EA-06 / EE-04 / CU-05
 
@@ -23,7 +23,7 @@ ni el resultado ni el certificado tienen validez oficial de INTRANT o autorizan 
 | SEGURIDAD | Seguridad activa y pasiva | CINTURONES, VISIBILIDAD |
 
 Cada defecto exige `categoria`, `subcategoria`, descripción de 1–300 caracteres,
-`severidad` (Leve/Mediano/Grave) y cantidad entera de 1–100. Se admiten hasta 100
+`severidad` (Leve/Mediano/Grave) y cantidad entera de 1–100 (por defecto 1 al omitirla). Se admiten hasta 100
 entradas por registro. Lista vacía significa cero defectos; registro ausente impide cierre.
 V1 congela M=3: aprobado si G=0, Md<=1 y L<=M. Una nueva versión solo aplica a futuros inicios.
 La migración inicial existente ya siembra V1/M=3; no duplicar ese registro.

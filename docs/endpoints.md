@@ -1,7 +1,7 @@
 # Contratos HTTP de AutoCheck
 
-Versión: 1.1 · Fecha de emisión: 2026-11-16 · Autores: Engels Vicioso / Equipo AutoCheck.
-Historial de cambios: 1.0 índice inicial; 1.1 contratos Sección C (EE-04, EA-03).
+Versión: 1.2 · Fecha de emisión: 2026-11-17 · Autores: Engels Vicioso / Equipo AutoCheck.
+Historial de cambios: 1.0 índice inicial; 1.1 contratos Sección C; 1.2 aclaración del valor predeterminado de cantidad (EE-04, EA-03).
 
 SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.json` en desarrollo o con `OpenApi__Enabled=true`.
 
@@ -95,7 +95,7 @@ siempre conserva el denominador de 21.
 
 Los campos listados son obligatorios salvo los marcados null/opcionales; no se exponen entidades EF.
 
-- Defecto: `{descripcion:string(1..300),severidad:Leve|Mediano|Grave,cantidad:int(1..100),categoria:string,subcategoria:string}`; referencias del catálogo académico. Registro admite 0–100 elementos, nunca null.
+- Defecto: `{descripcion:string(1..300),severidad:Leve|Mediano|Grave,cantidad:int(1..100),categoria:string,subcategoria:string}`; cantidad es opcional y vale 1 cuando se omite, conforme al DTO existente. Las referencias del catálogo son obligatorias para registros nuevos. Registro admite 0–100 elementos, nunca null.
 - Inspection: `{id,vehiculoId,centroId,rampaId,inspectorId:uuid,inspeccionAnteriorId:uuid|null,inicioUtc:fecha,cierreUtc:fecha|null,estado:ABIERTA|CERRADA,resultado:Aprobado|Rechazado|null,versionReglas:string,m:int,l:int,md:int,g:int,version:int,defectos:[Defecto]|null}`.
 - History: `{id:uuid,cierreUtc:fecha|null,resultado:string|null,versionReglas:string,m:int,l:int,md:int,g:int,centroId:uuid,inspeccionAnteriorId:uuid|null}`.
 - Rule: `{id:uuid,version:string,m:int,vigenciaUtc:fecha}`.
