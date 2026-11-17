@@ -50,8 +50,10 @@ public partial class BusinessFlowTests : DatabaseTest
     [IntegrationFact]
     public async Task PA08AggregationIsIdempotentAndFiltersDoNotExposeOtherCenters()
     {
+        var otherRamp = Guid.NewGuid();
         await WithDb(async db =>
         {
+            db.Ramps.Add(new() { Id = otherRamp, CenterId = CenterId, Name = "R2" });
             for (var n = 0; n < 22; n++)
             {
                 var payment = new PaymentAttempt
@@ -59,7 +61,7 @@ public partial class BusinessFlowTests : DatabaseTest
                     UserId = CitizenId,
                     VehicleId = VehicleId,
                     CenterId = CenterId,
-                    RampId = RampId,
+                    RampId = n == 0 ? otherRamp : RampId,
                     Starts = Starts.AddMinutes(n * 30),
                     Expires = App.Clock.Now.AddMinutes(5),
                     State = "APROBADO"
@@ -70,13 +72,13 @@ public partial class BusinessFlowTests : DatabaseTest
                     UserId = CitizenId,
                     VehicleId = VehicleId,
                     CenterId = CenterId,
-                    RampId = RampId,
+                    RampId = payment.RampId,
                     Starts = payment.Starts,
                     State = "COMPLETADA"
                 };
                 db.Payments.Add(payment);
                 db.Appointments.Add(appointment);
-                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, InspectorId = InspectorId, Closed = App.Clock.Now.AddHours(-8).AddSeconds(n - 10), Started = App.Clock.Now.AddHours(-9), State = "CERRADA", Result = n < 20 ? "Aprobado" : "Rechazado", Defects = n < 20 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 20 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
+                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = payment.RampId, InspectorId = InspectorId, Closed = App.Clock.Now.AddHours(-8).AddSeconds(n - 10), Started = App.Clock.Now.AddHours(-9), State = "CERRADA", Result = n < 20 ? "Aprobado" : "Rechazado", Defects = n < 20 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 20 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
             }
 
             await db.SaveChangesAsync();
@@ -100,7 +102,13 @@ public partial class BusinessFlowTests : DatabaseTest
         Assert.Equal(reference.From, alert.From);
         Assert.Equal(reference.To, alert.To);
         Assert.Equal(20, alert.Approved);
-        Assert.Equal(2, await WithDb(db => db.Metrics.CountAsync()));
+        Assert.Equal(3, await WithDb(db => db.Metrics.CountAsync()));
+        var filtered = await Json(await Administrator.GetAsync($"/api/reportes/alertas?desde=2026-11-10&hasta=2026-11-11&rampaId={otherRamp}"));
+        var item = Assert.Single(filtered.GetProperty("items").EnumerateArray());
+        Assert.Equal(21, item.GetProperty("total").GetInt32());
+        Assert.Equal(21, item.GetProperty("inspecciones").GetArrayLength());
+        Assert.Equal(100d * 20 / 21, item.GetProperty("porcentaje").GetDouble());
+        Assert.Equal(JsonValueKind.String, filtered.GetProperty("ultimaActualizacionUtc").ValueKind);
         Assert.Equal(HttpStatusCode.Forbidden, (await Citizen.GetAsync("/api/reportes/inspecciones")).StatusCode);
     }
 
