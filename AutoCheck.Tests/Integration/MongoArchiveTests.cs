@@ -4,6 +4,8 @@ using AutoCheck.Api.Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AutoCheck.Tests.Integration;
 
@@ -32,14 +34,14 @@ public class MongoArchiveTests
             throw new InvalidOperationException("Only isolated loopback MongoDB is allowed.");
         }
 
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Mongo:ConnectionString"] = url }).Build();
-        using var connection = new MongoArchiveConnection(config);
+        using var connection = new MongoArchiveConnection(Options.Create(new MongoDbOptions { ConnectionString = url }));
         var archive = new MongoInspectionArchive(connection);
         var id = ObjectId.GenerateNewId();
         var inspection = new Inspection
         {
             MongoId = id.ToString(),
-            Defects = "[]",
+            Defects = "[{\"categoria\":\"ALUMBRADO\",\"subcategoria\":\"FAROS\",\"descripcion\":\"Faro\",\"severidad\":\"Leve\",\"cantidad\":1}]",
+            Minor = 1,
             Result = "Aprobado",
             RuleVersion = "V1",
             MaxMinor = 3
@@ -48,9 +50,15 @@ public class MongoArchiveTests
         var filter = Builders<BsonDocument>.Filter.Eq("_id", id);
         try
         {
-            await archive.Copy(inspection, default);
-            await archive.Copy(inspection, default);
+            await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => archive.Copy(inspection, default)));
             Assert.Equal(1, await collection.CountDocumentsAsync(filter));
+            await using var db = connection.CreateContext();
+            await db.Database.EnsureCreatedAsync();
+            var report = await db.Reports.AsNoTracking().SingleAsync(x => x.Id == id);
+            Assert.Equal(inspection.Id.ToString(), report.InspectionId);
+            Assert.Equal(3, report.MaxMinor);
+            Assert.Equal("FAROS", Assert.Single(report.Defects).Subcategoria);
+            Assert.Equal(1, report.Minor);
         }
         finally
         {

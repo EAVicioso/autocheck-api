@@ -88,6 +88,18 @@ Azure App Service debe mantener activo el proceso/worker durante validaciones y 
 
 ## Evidencia y límites de validación
 
+Entrega Sección C del 16/11/2026: MongoDB EF Core 10.0.5 utiliza
+`AutoCheckReportsDbContext`, base `AutoCheckReports`, colección `Reports` y configuración
+`MongoDb:ConnectionString` (`MongoDb__ConnectionString` en entorno). El cliente singleton
+es diferido; el contexto es scoped y el consumidor conserva upsert atómico por ObjectId.
+Las migraciones aditivas SectionCHistoryIndex/SectionCDefectCatalog agregan índice y
+referencias académicas V1 sin modificar cierres anteriores ni reaplicar reglas.
+La revisión del 17/11/2026 añade SectionCQueryIndexes para los listados por inicio/actor
+y alertas por fecha; mantiene las migraciones anteriores sin reescribirlas. La
+reconciliación refresca ventanas afectadas por commits tardíos y elimina únicamente
+alertas derivadas que ya no cumplen la condición, conservando métricas e historia.
+Consultar [evidencia y pendientes de aceptación](reviews/section-c-2026-11-16.md).
+
 xUnit cubre reglas y límites; RestAssured.Net verifica HTTP real con Kestrel. PostgreSQL aislado prueba carreras, límites 299/300/301 segundos, reintentos, rollback inducido, permisos e inmutabilidad. MongoDB aislado prueba upsert. El PDF se verifica criptográficamente y se inspecciona visualmente.
 
 Los checks de CI no sustituyen PA-10b/RS-08 con 100 usuarios y red individual controlada, ni las veinte operaciones PDF/IA contra los proveedores configurados. Ejecutar el harness de `tests/load` en el entorno de validación y conservar la evidencia de red y recursos antes de declarar esas PA aprobadas.

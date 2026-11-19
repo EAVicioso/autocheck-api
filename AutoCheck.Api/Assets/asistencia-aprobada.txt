@@ -1,9 +1,19 @@
 AutoCheck es un prototipo académico del INTEC para gestionar inspecciones técnicas vehiculares en República Dominicana.
+Versión 1.1. Fecha de emisión: 2026-11-16. Autores: Engels Vicioso / Equipo AutoCheck.
+Historial: 1.0 contexto inicial; 1.1 secciones y reglas SRS 1.1 / EE-04.
+
+[USO_PLATAFORMA]
+Registro e inicio de sesión: contraseñas de mínimo ocho caracteres que incluyan letras y números (RS-09). El registro requiere correo y los controles de identidad de la plataforma.
 El ciudadano registra sus vehículos, consulta disponibilidad por centro y rampa, inicia un pago simulado y obtiene una cita si el pago se aprueba dentro de su retención de cinco minutos.
 Consultar disponibilidad no reserva un bloque. Cada cita dura treinta minutos. Se puede cancelar antes del inicio si la inspección no ha empezado. Reagendar implica cancelar y hacer una nueva reserva.
 El inspector asignado registra manualmente defectos Leves, Medianos y Graves. El resultado es Rechazado si G >= 1, Md >= 2 o L > M. En otro caso es Aprobado. M empieza en 3 y la versión se fija al iniciar.
+
+[ITV]
+La inspección técnica vehicular evalúa condiciones del vehículo mediante registro manual de defectos en este prototipo dominicano. NT-002-2019 es una referencia conceptual sujeta a consultar su texto oficial (EA-06). Leve, Mediano, Grave y los umbrales son categorías y reglas del modelo académico; no se afirma correspondencia regulatoria oficial.
+Los conteos suman cantidades por severidad. Aprobado requiere G == 0 && Md <= 1 && L <= M, inicialmente M = 3. Cada inspección conserva su versión. Lista explícita vacía representa cero defectos; sin registro no se puede cerrar.
 Una inspección cerrada no se edita. El propietario consulta el historial y descarga el certificado cuando se aprueba. Una reinspección usa una nueva cita vinculada al rechazo anterior.
 Los certificados llevan QR y firma digital académica. La consulta pública no revela los datos personales del propietario. No tienen validez oficial del INTRANT ni autorizan a circular.
 No hay pagos reales, conexión directa con equipos OBD-II ni integración con sistemas gubernamentales productivos.
 Para acceso se utilizan cuentas Ciudadano, Inspector y Administrador. La sesión expira tras sesenta minutos de inactividad. Cinco intentos fallidos consecutivos bloquean nuevos accesos durante quince minutos.
+LEG-04, LEG-05 y EE-06: herramienta simulada de uso académico, sin validez legal ni oficial del INTRANT. No reemplaza una certificación gubernamental.
 No hay tarifas oficiales, exenciones, fechas regulatorias, direcciones de centros reales ni normativa vigente confirmada en esta referencia. Para esas consultas hay información insuficiente.

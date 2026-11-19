@@ -1,16 +1,20 @@
+// AutoCheck / INTEC, SRS 1.1; Section C / PA-05/08/09/10. Version 1.0; history: Git.
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Microsoft.Extensions.Options;
 
 namespace AutoCheck.Api.Infrastructure;
 // One pool per process; optional projection configuration is resolved on first delivery.
-public sealed class MongoArchiveConnection(IConfiguration config) : IDisposable
+public sealed class MongoArchiveConnection(IOptions<MongoDbOptions> options) : IDisposable
 {
-    private readonly Lazy<MongoClient> client = new(() => CreateClient(config));
-    public IMongoCollection<BsonDocument> Collection => client.Value.GetDatabase("autocheck_inspections_db").GetCollection<BsonDocument>("reportes_defectos");
+    private readonly Lazy<IMongoClient> client = new(() => CreateClient(options.Value));
+    public IMongoClient Client => client.Value;
+    public IMongoCollection<BsonDocument> Collection => Client.GetDatabase(AutoCheckReportsDbContext.DatabaseName).GetCollection<BsonDocument>(AutoCheckReportsDbContext.CollectionName);
+    public AutoCheckReportsDbContext CreateContext() => new(new DbContextOptionsBuilder<AutoCheckReportsDbContext>().UseMongoDB(Client, AutoCheckReportsDbContext.DatabaseName).Options, Client);
 
-    private static MongoClient CreateClient(IConfiguration config)
+    private static MongoClient CreateClient(MongoDbOptions options)
     {
-        var connection = config["Mongo:ConnectionString"];
+        var connection = options.ConnectionString;
         if (string.IsNullOrWhiteSpace(connection))
         {
             throw ApiContract.Unavailable();
@@ -31,4 +35,9 @@ public sealed class MongoArchiveConnection(IConfiguration config) : IDisposable
             client.Value.Dispose();
         }
     }
+}
+
+public sealed class MongoDbOptions
+{
+    public string? ConnectionString { get; set; }
 }
