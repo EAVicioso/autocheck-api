@@ -126,11 +126,20 @@ public partial class BusinessFlowTests : DatabaseTest
             await AddReportInspection(n, n < 20, firstClose.AddSeconds(n));
         }
         await AssertReportReconciliation(21);
-        await AddReportInspection(21, true, firstClose.AddMilliseconds(500));
+        var alertId = await WithDb(db => db.Alerts.Select(x => x.Id).SingleAsync());
+        var originalXmin = await ReadAlertXmin(alertId);
+        await AssertReportReconciliation(21);
+        Assert.Equal(originalXmin, await ReadAlertXmin(alertId));
+        var lateId = await AddReportInspection(21, true, firstClose.AddMilliseconds(500));
         await AssertReportReconciliation(22);
+        Assert.NotEqual(originalXmin, await ReadAlertXmin(alertId));
+        Assert.Contains(lateId, await WithDb(db => db.Alerts.Where(x => x.Id == alertId).Select(x => x.InspectionIds).SingleAsync()));
         await AddReportInspection(22, false, firstClose.AddMilliseconds(750));
         await AssertReportReconciliation(23);
     }
+
+    private Task<string> ReadAlertXmin(Guid id) => WithDb(db => db.Database.SqlQuery<string>(
+        $"SELECT xmin::text AS \"Value\" FROM autocheck.\"AnomalyAlert\" WHERE \"Id\" = {id}").SingleAsync());
 
     private Task<Guid> AddReportInspection(int slot, bool approved, DateTimeOffset closed) => WithDb(async db =>
     {

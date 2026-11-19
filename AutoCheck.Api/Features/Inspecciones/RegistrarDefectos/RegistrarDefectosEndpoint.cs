@@ -18,7 +18,7 @@ public static class RegistrarDefectosEndpoint
             v.RuleForEach(x => x.Defectos).NotNull().ChildRules(d =>
             {
                 d.RuleFor(x => x.Descripcion).NotEmpty().MaximumLength(300);
-                d.RuleFor(x => x.Severidad).Must(x => new[] { "Leve", "Mediano", "Grave" }.Contains(x));
+                d.RuleFor(x => x.Severidad).Must(InspectionRules.ValidSeverity);
                 d.RuleFor(x => x.Cantidad).InclusiveBetween(1, 100);
                 d.RuleFor(x => x).Must(x => DefectCatalog.Contains(x.Categoria, x.Subcategoria)).WithMessage("Categoría/subcategoría inválida según el catálogo académico V1.");
             });
@@ -28,6 +28,7 @@ public static class RegistrarDefectosEndpoint
     private static async Task<ApiReply> HandleAsync(Guid id, RegisterDefectsRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation) => await mutation.Run(h, r, async ct =>
     {
         var i = await Editable(id, r.VersionEsperada, db, actor, ct);
+        await DefectCatalog.ValidateReferencesAsync(db, r.Defectos, ct);
         var counts = InspectionRules.Count(r.Defectos);
         i.Defects = ApiReply.Serialize(r.Defectos);
         i.Minor = counts.L;

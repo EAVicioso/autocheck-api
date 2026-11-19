@@ -41,7 +41,7 @@ public sealed class ReportConsolidator(AutoCheckDb db, TimeProvider clock)
                                     AND current_window."Id" = alert."FinalInspectionId")
                 RETURNING alert."Id"
             )
-            INSERT INTO autocheck."AnomalyAlert" ("Id", "InspectorId", "CenterId", "FinalInspectionId", "Day",
+            INSERT INTO autocheck."AnomalyAlert" AS existing ("Id", "InspectorId", "CenterId", "FinalInspectionId", "Day",
                                                  "From", "To", "Approved", "InspectionIds", "RampIds")
             SELECT gen_random_uuid(), "InspectorId", "CenterId", "Id",
                    ("Closed" AT TIME ZONE 'America/Santo_Domingo')::date,
@@ -49,8 +49,10 @@ public sealed class ReportConsolidator(AutoCheckDb db, TimeProvider clock)
                    ARRAY(SELECT DISTINCT ramp FROM unnest(ramps) AS ramp ORDER BY ramp)
             FROM qualifying
             ON CONFLICT ("InspectorId", "CenterId", "FinalInspectionId") DO UPDATE
-            SET "From" = EXCLUDED."From", "To" = EXCLUDED."To", "Approved" = EXCLUDED."Approved",
+            SET "Day" = EXCLUDED."Day", "From" = EXCLUDED."From", "To" = EXCLUDED."To", "Approved" = EXCLUDED."Approved",
                 "InspectionIds" = EXCLUDED."InspectionIds", "RampIds" = EXCLUDED."RampIds"
+            WHERE (existing."Day", existing."From", existing."To", existing."Approved", existing."InspectionIds", existing."RampIds")
+                IS DISTINCT FROM (EXCLUDED."Day", EXCLUDED."From", EXCLUDED."To", EXCLUDED."Approved", EXCLUDED."InspectionIds", EXCLUDED."RampIds")
             """, ct);
         var state = await db.Aggregation.FindAsync([1], ct);
         if (state is null)

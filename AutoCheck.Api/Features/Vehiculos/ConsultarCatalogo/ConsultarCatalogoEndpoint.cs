@@ -1,5 +1,5 @@
-using AutoCheck.Api.Features.Vehiculos.Common;
-using static AutoCheck.Api.Features.Vehiculos.Common.VehicleSupport;
+// AutoCheck / INTEC, SRS 1.1; IU-01 / PA-05. Version 1.1; history: Git.
+using AutoCheck.Api.Features.Inspecciones.Common;
 
 namespace AutoCheck.Api.Features.Vehiculos.ConsultarCatalogo;
 
@@ -14,7 +14,9 @@ public static class ConsultarCatalogoEndpoint
                 "marcas",
                 "modelos",
                 "colores",
-                "categorias"
+                "categorias",
+                DefectCatalog.CategoryType,
+                DefectCatalog.SubcategoryType
             }.Contains(tipo))
             {
                 throw ApiContract.Missing();

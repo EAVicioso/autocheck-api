@@ -31,7 +31,10 @@ public static class CerrarInspeccionEndpoint
                 throw ApiContract.Invalid("Registra los defectos, incluso la lista vacía si no hay defectos.");
             }
 
-            i.Result = InspectionRules.Verdict(i.Minor, i.Medium, i.Serious, i.MaxMinor);
+            var defects = await ReadCompleteDefects(i.Defects, db, ct);
+            var counts = InspectionRules.Count(defects);
+            (i.Minor, i.Medium, i.Serious) = counts;
+            i.Result = InspectionRules.Verdict(counts.L, counts.Md, counts.G, i.MaxMinor);
             i.State = "CERRADA";
             i.Closed = clock.GetUtcNow();
             i.Revision++;
@@ -47,6 +50,34 @@ public static class CerrarInspeccionEndpoint
 
             return ApiReply.Ok(Response(i));
         }, true);
+    }
+
+    private static async Task<DefectEntry[]> ReadCompleteDefects(string json, AutoCheckDb db, CancellationToken ct)
+    {
+        const string incomplete = "Completa o reemplaza los defectos registrados antes de cerrar la inspección.";
+        DefectEntry[]? defects;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array || document.RootElement.GetArrayLength() > 100
+                || document.RootElement.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("cantidad", out _)))
+            {
+                throw ApiContract.Invalid(incomplete);
+            }
+            defects = document.RootElement.Deserialize<DefectEntry[]>(ApiReply.JsonOptions);
+        }
+        catch (JsonException)
+        {
+            throw ApiContract.Invalid(incomplete);
+        }
+
+        if (defects is null || defects.Any(x => x is null || string.IsNullOrWhiteSpace(x.Descripcion)
+            || x.Descripcion.Length > 300 || !DefectCatalog.Contains(x.Categoria, x.Subcategoria)))
+        {
+            throw ApiContract.Invalid(incomplete);
+        }
+        await DefectCatalog.ValidateReferencesAsync(db, defects, ct);
+        return defects;
     }
 }
 

@@ -26,6 +26,49 @@ public partial class BusinessFlowTests
     }
 
     [IntegrationFact]
+    public async Task PA05InspectorRepairsLegacyDefectsWithCatalogCodesBeforeClosing()
+    {
+        var inspection = await StartInspectionAt(0);
+        var id = inspection.GetProperty("id").GetGuid();
+        await WithDb(db => db.Inspections.Where(x => x.Id == id).ExecuteUpdateAsync(s => s
+            .SetProperty(x => x.Defects, "[{\"descripcion\":\"Faro\",\"severidad\":\"Leve\",\"cantidad\":1}]")));
+
+        var close = $"/api/inspecciones/{id}/cierre";
+        var body = new { versionEsperada = 0 };
+        using var rejected = await Send(Inspector, HttpMethod.Post, close, body, "legacy-close");
+        Assert.Equal("application/problem+json", rejected.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("SOLICITUD_INVALIDA", (await Json(rejected, HttpStatusCode.BadRequest)).GetProperty("codigo").GetString());
+        var unchanged = await WithDb(db => db.Inspections.AsNoTracking().SingleAsync(x => x.Id == id));
+        Assert.Equal("ABIERTA", unchanged.State);
+        Assert.Null(unchanged.Result);
+        Assert.Null(unchanged.Closed);
+        Assert.False(await WithDb(db => db.Certificates.AnyAsync(x => x.InspectionId == id)));
+        Assert.False(await WithDb(db => db.Outbox.AnyAsync(x => x.AggregateId == id)));
+
+        const string categories = "/api/catalogos/defectos-categorias-v1";
+        var category = (await ReadInspectorCatalog(categories)).EnumerateArray().Single(x => x.GetProperty("nombre").GetString() == "ALUMBRADO");
+        var parent = category.GetProperty("id").GetGuid();
+        var subcategories = await ReadInspectorCatalog($"/api/catalogos/defectos-subcategorias-v1?padreId={parent}");
+        Assert.Equal(2, subcategories.GetArrayLength());
+        Assert.All(subcategories.EnumerateArray(), x => Assert.Equal(parent, x.GetProperty("padreId").GetGuid()));
+        var subcategory = subcategories.EnumerateArray().Single(x => x.GetProperty("nombre").GetString() == "FAROS");
+        var defects = new[] { new { categoria = category.GetProperty("nombre").GetString(), subcategoria = subcategory.GetProperty("nombre").GetString(), descripcion = "Faro", severidad = "Leve", cantidad = 1 } };
+        var registration = $"/api/inspecciones/{id}/registro";
+        await Json(await Inspector.PutAsJsonAsync(registration, new { versionEsperada = 0, defectos = defects }));
+        var closed = await Json(await Send(Inspector, HttpMethod.Post, close, new { versionEsperada = 1 }, "legacy-close"));
+        Assert.Equal("Aprobado", closed.GetProperty("resultado").GetString());
+        Assert.Equal(1, await WithDb(db => db.Outbox.CountAsync(x => x.AggregateId == id && x.Kind == "CERTIFICADO")));
+        Assert.Equal(HttpStatusCode.Conflict, (await Inspector.PutAsJsonAsync(registration, new { versionEsperada = 2, defectos = defects })).StatusCode);
+    }
+
+    private async Task<JsonElement> ReadInspectorCatalog(string route)
+    {
+        RestAssured.Dsl.Given().Header("Authorization", Inspector.DefaultRequestHeaders.Authorization!.ToString())
+            .When().Get(new Uri(Inspector.BaseAddress!, route).ToString()).Then().StatusCode(200);
+        return (await Json(await Inspector.GetAsync(route))).GetProperty("items");
+    }
+
+    [IntegrationFact]
     public async Task PA05ReplaysRevalidateAssignmentAndCenterWithoutRepeatingEffects()
     {
         var first = await StartInspectionAt(0, idempotencyKey: "scope-start");

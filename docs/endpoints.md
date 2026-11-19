@@ -61,6 +61,14 @@ SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.js
 
 ## Contratos Sección C: CU-05/08/09/10
 
+Una sesión autenticada, incluida la de Inspector, puede consultar
+`GET /api/catalogos/defectos-categorias-v1` y
+`GET /api/catalogos/defectos-subcategorias-v1?padreId={uuid}`. Ambos devuelven
+`{items:[{id,nombre,padreId}]}` y admiten `pagina` y `tamano`. El `nombre`
+es el código que se envía en `categoria` o `subcategoria` al registrar defectos.
+Un cierre con defectos heredados incompletos devuelve 400. El inspector asignado
+puede reemplazar el registro mientras la inspección esté abierta.
+
 Todas requieren `Authorization: Bearer <token>` con sesión activa registrada; roles,
 permisos y centro se cargan de PostgreSQL. JSON usa Content-Type application/json,
 UUID en formato textual y fechas UTC ISO 8601. `/api` devuelve Cache-Control: no-store.
