@@ -63,7 +63,7 @@ SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.js
 
 GET /api/roles; GET /api/permisos; GET /api/usuarios/{id}; GET /api/usuarios/{id}/acceso; DELETE /api/usuarios/{id}?version=N; DELETE /api/vehiculos/{id}?version=N; GET /api/certificados; GET /api/auditorias/{id}.
 
-PATCH profile/access/vehicle requires version from the latest response. DELETE archives and returns 204; stale version returns 409. User and vehicle responses include version and archivadoUtc. Creation of vehicles continues to omit version. Ver [estado y evidencia](lifecycle-implementation.md) y [matriz de las 30 slices](lifecycle-slices.md).
+Los PATCH de perfil, acceso y vehículo aceptan `version` opcional. Cuando se envía, debe coincidir con la versión vigente. Una versión obsoleta devuelve 409. Los clientes anteriores pueden omitirla. DELETE recibe la versión en query, archiva y devuelve 204. Las respuestas de usuarios y vehículos incluyen `version` y `archivadoUtc`. Ver [estado y evidencia](lifecycle-implementation.md) y [matriz de las 30 slices](lifecycle-slices.md).
 
 ## Filtros de DEC-LIFECYCLE-01
 
@@ -78,7 +78,7 @@ PATCH profile/access/vehicle requires version from the latest response. DELETE a
 | auditorías globales | desdeUtc, hastaUtc, operacion, entidad, actorId | fechaUtc (desc), desempate id | sí |
 | historial autorizado | estado ABIERTA/CERRADA, resultado Aprobado/Rechazado, desde/hasta locales de inicio | cierreUtc (desc), desempate id | sí |
 
-La ausencia de `incluirArchivados=true` excluye usuarios/vehículos archivados de sus listados; conserva detalle e historial autorizado. `PATCH` de perfil, acceso y vehículo requiere `version`; `DELETE` la recibe en query. El API no permite editar roles/permisos de catálogo ni modificar/borrar auditorías o certificados emitidos.
+La ausencia de `incluirArchivados=true` excluye usuarios/vehículos archivados de sus listados; conserva detalle e historial autorizado. Los PATCH compatibles sin `version` usan la versión que lee la transacción. Ese modo conserva el token de concurrencia de EF y carece de la comprobación contra una lectura previa del cliente. El API no permite editar roles/permisos de catálogo ni modificar/borrar auditorías o certificados emitidos.
 
 ## Contratos Sección C: CU-05/08/09/10
 

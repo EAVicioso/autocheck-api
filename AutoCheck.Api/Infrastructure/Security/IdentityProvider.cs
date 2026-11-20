@@ -1,5 +1,6 @@
 // AutoCheck academic prototype, SRS 1.1; IS-01, RD-11.
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
@@ -50,6 +51,7 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     public async Task<ProviderRegistration> Register(string email, string password, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "signup", new { email, password }, ct);
+        EnsureAvailable(response.StatusCode);
         if (!response.IsSuccessStatusCode)
         {
             throw ApiContract.Invalid("No se pudo registrar la cuenta. Revisa el correo y la contraseña.");
@@ -66,10 +68,7 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     private async Task<ProviderSession?> Tokens(string grant, object body, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "token?grant_type=" + grant, body, ct);
-        if ((int)response.StatusCode >= 500 || (int)response.StatusCode == 429)
-        {
-            throw ApiContract.Unavailable();
-        }
+        EnsureAvailable(response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -132,6 +131,14 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     {
         using var response = await Send(HttpMethod.Post, "logout?scope=local", null, ct, accessToken);
         if (!response.IsSuccessStatusCode && (int)response.StatusCode is not (401 or 403 or 404))
+        {
+            throw ApiContract.Unavailable();
+        }
+    }
+
+    private static void EnsureAvailable(HttpStatusCode status)
+    {
+        if ((int)status >= 500 || status == HttpStatusCode.TooManyRequests)
         {
             throw ApiContract.Unavailable();
         }

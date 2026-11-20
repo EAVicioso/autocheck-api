@@ -14,6 +14,7 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
             ApiException known => known,
             DbUpdateConcurrencyException => ApiContract.Conflict("VERSION_DESACTUALIZADA", "El registro cambió. Actualiza y reintenta."),
             DbUpdateException d when d.InnerException is Npgsql.PostgresException { SqlState: "23505" } => ApiContract.Conflict("REGISTRO_DUPLICADO", "El registro ya existe."),
+            DbUpdateException { InnerException: Npgsql.NpgsqlException { IsTransient: true } or TimeoutException } => ApiContract.Unavailable(),
             BadHttpRequestException bad => new ApiException(bad.StatusCode, ApiErrorCode.SolicitudInvalida, "JSON o solicitud inválidos."),
             HttpRequestException or TaskCanceledException or Npgsql.NpgsqlException => ApiContract.Unavailable(),
             _ => new ApiException(500, "ERROR_INTERNO", "No se pudo completar la operación.")

@@ -16,7 +16,7 @@ public sealed class LifecycleValidatorTests
         Assert.False(result.IsValid);
     }
     [Fact]
-    public async Task ProfileRequiresVersionBeforeEffects()
+    public async Task ProfileRejectsExplicitNonPositiveVersion()
     {
         var result = await new Profile.Validator().ValidateAsync(new Profile.ProfileRequest("Ana", "", 0));
         Assert.Contains(result.Errors, x => x.PropertyName == "Version");

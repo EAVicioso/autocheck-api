@@ -83,6 +83,10 @@ public class ApiContractTests(PublicApiFactory application) : IClassFixture<Publ
         {
             Assert.True(paths.TryGetProperty(route, out _), route);
         }
+        Assert.True(paths.GetProperty("/api/auth/login").GetProperty("post").GetProperty("responses").TryGetProperty("429", out _));
+        Assert.True(paths.GetProperty("/api/certificados/{id}/verificacion").GetProperty("get").GetProperty("responses").TryGetProperty("429", out _));
+        Assert.True(paths.GetProperty("/api/usuarios/{id}").GetProperty("delete").GetProperty("responses").TryGetProperty("503", out _));
+        Assert.True(paths.GetProperty("/api/vehiculos/{id}").GetProperty("delete").GetProperty("responses").TryGetProperty("503", out _));
     }
 
     [Fact]

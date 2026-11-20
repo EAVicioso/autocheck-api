@@ -73,14 +73,20 @@ public sealed class SessionGuard(RequestDelegate next)
                 throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
             }
 
-            var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId, context.RequestAborted);
-            var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.AuthId == subject, context.RequestAborted);
+            var identity = await (
+                from storedSession in db.Sessions.AsNoTracking()
+                join account in db.Users.AsNoTracking() on storedSession.UserId equals account.Id
+                where storedSession.Id == sessionId && account.AuthId == subject
+                select new { Session = storedSession, User = account }
+            ).SingleOrDefaultAsync(context.RequestAborted);
             var now = clock.GetUtcNow();
-            var logout = context.GetEndpoint()?.Metadata.GetMetadata<LogoutOperation>() is not null;
-            if (session is null || user is null || session.UserId != user.Id)
+            var logout = context.GetEndpoint()?.Metadata.GetMetadata<LogoutOperation>()?.AllowRevoked == true;
+            if (identity is null)
             {
                 throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
             }
+            var user = identity.User;
+            var session = identity.Session;
             if (!logout && Expired(session, user, now))
             {
                 throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");

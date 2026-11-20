@@ -9,6 +9,6 @@ public sealed class Handler(IData data)
 {
     public Task<(int Status, UserResponse? Body, string? Location)> Execute(ProfileRequest r, HttpContext h, CancellationToken cancellationToken)
     {
-        return data.Execute(r with { Nombre = r.Nombre.Trim(), Celular = r.Celular.Trim() }, h, state => Lifecycle.RequireVersion(r.Version, state.Version, state.ArchivedAt), cancellationToken);
+        return data.Execute(r with { Nombre = r.Nombre.Trim(), Celular = r.Celular.Trim() }, h, state => Lifecycle.RequireVersion(r.Version ?? state.Version, state.Version, state.ArchivedAt), cancellationToken);
     }
 }

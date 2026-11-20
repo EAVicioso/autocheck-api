@@ -20,7 +20,7 @@ public sealed class Handler(IData data, AppActor actor)
     {
         var user = state.User;
         AuthorizeScope(user, request);
-        Lifecycle.RequireVersion(request.Version, user.Version, user.ArchivadoUtc);
+        Lifecycle.RequireVersion(request.Version ?? user.Version, user.Version, user.ArchivadoUtc);
         ValidateAssignment(user, request, state);
         var remains = request.Rol == Roles.Admin && request.Activo && request.CentroId == null && request.Permisos.Contains(Permissions.Users);
         if (state.LastAdministrator && !remains)

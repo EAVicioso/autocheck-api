@@ -17,7 +17,7 @@ public sealed class Handler(IData data, AppActor actor)
         {
             AppActor.Deny();
         }
-        Lifecycle.RequireVersion(request.Version, state.Version, state.ArchivedAt);
+        Lifecycle.RequireVersion(request.Version ?? state.Version, state.Version, state.ArchivedAt);
         if (!state.CatalogValid)
         {
             throw ApiContract.Invalid("Modelo o color inválido.");

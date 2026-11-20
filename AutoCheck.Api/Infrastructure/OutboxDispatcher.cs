@@ -80,13 +80,21 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
         {
             // Roll back all tracked side effects before recording the retry in a separate transaction.
             var messageId = message.Id;
+            var previousAttempts = message.Attempts;
+            var previousAvailability = message.Available;
+            var nextAttempts = previousAttempts + 1;
             await tx.RollbackAsync(ct);
             db.ChangeTracker.Clear();
-            var failed = await db.Outbox.SingleAsync(x => x.Id == messageId, ct);
-            failed.Attempts++;
-            failed.Available = clock.GetUtcNow().AddSeconds(Math.Min(300, Math.Pow(2, Math.Min(failed.Attempts, 8))));
-            await db.SaveChangesAsync(ct);
-            ApiLog.DeliveryRetry(logger, messageId, ex.GetType().Name);
+            // A different worker may have completed or rescheduled the message after the rollback.
+            var retryAt = clock.GetUtcNow().AddSeconds(Math.Min(300, Math.Pow(2, Math.Min(nextAttempts, 8))));
+            var rescheduled = await db.Outbox.Where(x => x.Id == messageId && x.Completed == null
+                && x.Attempts == previousAttempts && x.Available == previousAvailability)
+                .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.Attempts, nextAttempts)
+                    .SetProperty(x => x.Available, retryAt), ct);
+            if (rescheduled > 0)
+            {
+                ApiLog.DeliveryRetry(logger, messageId, ex.GetType().Name);
+            }
             return true;
         }
     }

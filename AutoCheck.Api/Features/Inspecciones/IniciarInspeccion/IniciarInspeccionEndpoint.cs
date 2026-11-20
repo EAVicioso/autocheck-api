@@ -19,7 +19,6 @@ public static class IniciarInspeccionEndpoint
         actor.RequireRole(Roles.Inspector);
         var reply = await mutation.Run(h, r, async ct =>
         {
-            actor.RequireRole(Roles.Inspector);
             var a = await db.Appointments.SingleOrDefaultAsync(x => x.Id == r.CitaId, ct) ?? throw ApiContract.Missing();
             await db.LockAsync("center:" + a.CenterId, ct);
             await db.LockAsync("user:" + actor.Id, ct);

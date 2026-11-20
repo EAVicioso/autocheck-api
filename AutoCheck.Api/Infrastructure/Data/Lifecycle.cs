@@ -30,10 +30,9 @@ public static class Lifecycle
 
     public static async Task<bool> HasPending(AutoCheckDb db, Guid id, bool user, DateTimeOffset now, CancellationToken ct)
     {
-        var appointment = await db.Appointments.AnyAsync(x => (user ? x.UserId == id || x.InspectorId == id : x.VehicleId == id) && (x.State == "CONFIRMADA" || x.State == "EN_INSPECCION"), ct);
-        var inspection = await db.Inspections.AnyAsync(x => x.State != "CERRADA" && (user ? x.OwnerId == id || x.InspectorId == id : x.VehicleId == id), ct);
-        var hold = await db.Payments.AnyAsync(x => x.State == "PENDIENTE" && x.Expires > now && (user ? x.UserId == id : x.VehicleId == id), ct);
-        return appointment || inspection || hold;
+        return await db.Appointments.AnyAsync(x => (user ? x.UserId == id || x.InspectorId == id : x.VehicleId == id) && (x.State == "CONFIRMADA" || x.State == "EN_INSPECCION"), ct)
+            || await db.Inspections.AnyAsync(x => x.State != "CERRADA" && (user ? x.OwnerId == id || x.InspectorId == id : x.VehicleId == id), ct)
+            || await db.Payments.AnyAsync(x => x.State == "PENDIENTE" && x.Expires > now && (user ? x.UserId == id : x.VehicleId == id), ct);
     }
     public static async Task RequireNoPending(AutoCheckDb db, Guid id, bool user, DateTimeOffset now, CancellationToken ct)
     {

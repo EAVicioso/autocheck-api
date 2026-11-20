@@ -36,7 +36,7 @@ Fronteras comunes: 400 para JSON/validación y filtros; 401 para identidad/sesi�
 | V02 | `POST /api/vehiculos` | Ciudadano; propietario desde AppActor | `VehicleRequest sin Version → VehicleResponse` | 201; 400,401,403,409,503 | VEHICULO_REGISTRADO |
 | V03 | `GET /api/vehiculos` | SesionActiva; propietario en SQL | `Query → PageResponse<VehicleResponse>` | 200; 400,401,403,503 | — |
 | V04 | `GET /api/vehiculos/{id}` | Propiedad/asignación/centro | `Query(Id) → VehicleResponse` | 200; 401,403,404,503 | — |
-| V05 | `PATCH /api/vehiculos/{id}` | Ciudadano; propietario | `VehicleRequest con Version → VehicleResponse` | 200; 400,401,403,404,409,503 | VEHICULO_ACTUALIZADO |
+| V05 | `PATCH /api/vehiculos/{id}` | Ciudadano; propietario | `VehicleRequest con Version opcional → VehicleResponse` | 200; 400,401,403,404,409,503 | VEHICULO_ACTUALIZADO |
 | V06 | `DELETE /api/vehiculos/{id}?version=N` | Ciudadano; propietario | `Command(Id,Version) → NoContent` | 204; 400,401,403,404,409,503 | VEHICULO_ARCHIVADO |
 | V07 | `GET /api/vehiculos/{id}/historial` | Propiedad/asignación/centro | `Query → PageResponse<HistoryResponse>` | 200; 400,401,403,404,503 | — |
 | C01 | `POST /api/inspecciones/{id}/certificado` | Propietario; cierre Aprobado; Idempotency-Key | `Command(Id) → CertificateResponse` | 202/200; 400,401,403,404,409,503 | CERTIFICADO_SOLICITADO |
@@ -223,7 +223,7 @@ private static async Task<Results<Ok<UserResponse>, ProblemHttpResult, Unauthori
 private static async Task<Results<Ok<UserResponse>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync(ProfileRequest r, HttpContext h, Handler handler, CancellationToken ct);
 ```
 
-**TDD:** Red → LifecycleFlowTests.ProfileRequiresCurrentVersionAndAuditsOnce; LifecycleMutationHandlerTests; para rutas protegidas añadir `LifecycleBoundaryTests.EveryProtectedLifecycleRouteRejectsMissingAuthenticationBeforeBinding`. Los adaptadores `IData` son puertos exclusivos del caso, sustituibles por NSubstitute; no simular DbSet/IQueryable. Green conserva locks y transacción; Refactor comprueba proyecciones/cancelación y cero warnings.
+**TDD:** Red → LifecycleFlowTests.ProfileChecksSuppliedVersionAndAuditsOnce; LifecycleMutationHandlerTests; para rutas protegidas añadir `LifecycleBoundaryTests.EveryProtectedLifecycleRouteRejectsMissingAuthenticationBeforeBinding`. Los adaptadores `IData` son puertos exclusivos del caso, sustituibles por NSubstitute; no simular DbSet/IQueryable. Green conserva locks y transacción; Refactor comprueba proyecciones/cancelación y cero warnings.
 
 **Supabase:** comprobar `UserAccount, AuditEvent` y persistencia/respuesta de esta fila con JWT real; verificar filtros de propiedad/centro, auditoría `PERFIL_ACTUALIZADO`, y que anon/authenticated no reciben USAGE del esquema privado. Para mutaciones, verificar resultado con un DbContext nuevo; conservar evidencia, nunca DELETE/reset compartido. Revisar los triggers existentes de inmutabilidad si afecta historial y las funciones ejecutadas por el caso; no crear RPC/RLS ficticias. La ejecución hosted sigue pendiente de secretos.
 
@@ -409,7 +409,7 @@ private static async Task<Results<Ok<VehicleResponse>, ProblemHttpResult, Unauth
 
 **BDD:** escenario `V05` en `behavior/lifecycle-endpoints.feature`; aplicar las fronteras comunes que corresponden a HTTP `200; 400,401,403,404,409,503`. No añadir códigos o transiciones fuera de esta fila.
 
-**CDD:** `VehicleRequest con Version → VehicleResponse`. Firmas de records en los archivos indicados; frontera HTTP exacta:
+**CDD:** `VehicleRequest con Version opcional → VehicleResponse`. Firmas de records en los archivos indicados; frontera HTTP exacta:
 
 ```csharp
 private static async Task<Results<Ok<VehicleResponse>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync(Guid id, VehicleRequest r, HttpContext h, Handler handler, CancellationToken ct);

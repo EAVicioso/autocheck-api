@@ -27,13 +27,48 @@ public sealed class LifecycleFlowTests : DatabaseTest
         Assert.Equal(1, await WithDb(db => db.Audit.CountAsync(x => x.Operation == "VEHICULO_ARCHIVADO")));
     }
     [IntegrationFact]
-    public async Task ProfileRequiresCurrentVersionAndAuditsOnce()
+    public async Task ProfileChecksSuppliedVersionAndAuditsOnce()
     {
         var payload = new { nombre = "Actualizado", celular = "8095551234", version = 1 };
         Assert.Equal(HttpStatusCode.OK, (await Citizen.PatchAsJsonAsync("/api/usuarios/me", payload)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await Citizen.PatchAsJsonAsync("/api/usuarios/me", payload)).StatusCode);
         Assert.Equal(1, await WithDb(db => db.Audit.CountAsync(x => x.Operation == "PERFIL_ACTUALIZADO")));
     }
+    [IntegrationFact]
+    public async Task ProfileAccessAndVehicleAcceptPayloadsFromMain()
+    {
+        using var profile = await Citizen.PatchAsJsonAsync("/api/usuarios/me", new { nombre = "Perfil compatible", celular = "" });
+        Assert.Equal(HttpStatusCode.OK, profile.StatusCode);
+
+        var accessRoute = $"/api/usuarios/{CitizenId}/acceso";
+        using var access = await Administrator.PatchAsJsonAsync(accessRoute, new { rol = "Ciudadano", permisos = Array.Empty<string>(), centroId = (Guid?)null, activo = true });
+        Assert.Equal(HttpStatusCode.OK, access.StatusCode);
+        using var staleAccess = await Administrator.PatchAsJsonAsync(accessRoute, new { rol = "Ciudadano", permisos = Array.Empty<string>(), centroId = (Guid?)null, activo = true, version = 2 });
+        Assert.Equal(HttpStatusCode.Conflict, staleAccess.StatusCode);
+
+        var vehicleRoute = $"/api/vehiculos/{VehicleId}";
+        var vehiclePayload = new
+        {
+            matricula = "A123456",
+            vin = "123456789ABCDEFGH",
+            anio = 2021,
+            modeloId = Guid.Parse("20000000-0000-0000-0000-000000000002"),
+            colorId = Guid.Parse("20000000-0000-0000-0000-000000000003")
+        };
+        using var vehicle = await Citizen.PatchAsJsonAsync(vehicleRoute, vehiclePayload);
+        Assert.Equal(HttpStatusCode.OK, vehicle.StatusCode);
+        using var staleVehicle = await Citizen.PatchAsJsonAsync(vehicleRoute, new
+        {
+            vehiclePayload.matricula,
+            vehiclePayload.vin,
+            vehiclePayload.anio,
+            vehiclePayload.modeloId,
+            vehiclePayload.colorId,
+            version = 1
+        });
+        Assert.Equal(HttpStatusCode.Conflict, staleVehicle.StatusCode);
+    }
+
     [IntegrationFact]
     public async Task ArchiveUserRevokesSessionsAndPreservesAuthIdentity()
     {
