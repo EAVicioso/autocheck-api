@@ -83,6 +83,10 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options, IHttpCont
         modelBuilder.Entity<InspectionRule>().HasIndex(x => x.Effective).IsUnique();
         modelBuilder.Entity<Inspection>().HasIndex(x => x.AppointmentId).IsUnique();
         modelBuilder.Entity<Inspection>().HasIndex(x => new { x.VehicleId, x.Closed });
+        modelBuilder.Entity<Inspection>().HasIndex(x => new { x.VehicleId, x.Started, x.Closed });
+        modelBuilder.Entity<Inspection>().HasIndex(x => new { x.Started, x.Id }).IsDescending(true, false);
+        modelBuilder.Entity<Inspection>().HasIndex(x => new { x.OwnerId, x.Started, x.Id }).IsDescending(false, true, false);
+        modelBuilder.Entity<Inspection>().HasIndex(x => new { x.InspectorId, x.CenterId, x.Started, x.Id }).IsDescending(false, false, true, false);
         modelBuilder.Entity<Inspection>().HasIndex(x => new { x.InspectorId, x.CenterId, x.Closed, x.Id });
         modelBuilder.Entity<Inspection>().HasOne<Appointment>().WithMany().HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Inspection>().HasOne<Inspection>().WithMany().HasForeignKey(x => x.PreviousId).OnDelete(DeleteBehavior.Restrict);
@@ -99,6 +103,7 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options, IHttpCont
         modelBuilder.Entity<IdempotencyRecord>().HasKey(x => x.Key);
         modelBuilder.Entity<DailyMetric>().HasKey(x => new { x.Day, x.CenterId, x.RampId, x.InspectorId });
         modelBuilder.Entity<AnomalyAlert>().HasIndex(x => new { x.InspectorId, x.CenterId, x.FinalInspectionId }).IsUnique();
+        modelBuilder.Entity<AnomalyAlert>().HasIndex(x => new { x.Day, x.Id });
         modelBuilder.Entity<InspectionRule>().HasData(new InspectionRule { Id = Guid.Parse("10000000-0000-0000-0000-000000000001"), Version = "V1", MaxMinor = 3, Effective = DateTimeOffset.UnixEpoch });
         modelBuilder.Entity<CatalogItem>().HasData(new CatalogItem { Id = Guid.Parse("20000000-0000-0000-0000-000000000001"), Type = "marcas", Name = "Toyota" }, new CatalogItem { Id = Guid.Parse("20000000-0000-0000-0000-000000000002"), Type = "modelos", Name = "Corolla", ParentId = Guid.Parse("20000000-0000-0000-0000-000000000001") }, new CatalogItem { Id = Guid.Parse("20000000-0000-0000-0000-000000000003"), Type = "colores", Name = "Blanco" }, new CatalogItem { Id = Guid.Parse("20000000-0000-0000-0000-000000000004"), Type = "categorias", Name = "Liviano" });
         foreach (var entity in modelBuilder.Model.GetEntityTypes())

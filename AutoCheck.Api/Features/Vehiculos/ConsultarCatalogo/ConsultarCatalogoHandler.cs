@@ -1,3 +1,5 @@
+using AutoCheck.Api.Features.Inspecciones.Common;
+
 namespace AutoCheck.Api.Features.Vehiculos.ConsultarCatalogo;
 
 public interface IData
@@ -8,7 +10,7 @@ public sealed class Handler(IData data)
 {
     public Task<PageResponse<CatalogResponse>> Execute(Query query, CancellationToken ct)
     {
-        if (query.Tipo is not ("marcas" or "modelos" or "colores" or "categorias"))
+        if (query.Tipo is not ("marcas" or "modelos" or "colores" or "categorias" or DefectCatalog.CategoryType or DefectCatalog.SubcategoryType))
         {
             throw ApiContract.Missing();
         }

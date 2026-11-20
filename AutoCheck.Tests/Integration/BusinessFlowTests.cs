@@ -25,7 +25,7 @@ using Npgsql;
 namespace AutoCheck.Tests.Integration;
 
 [Trait("Category", "Integration")]
-public class BusinessFlowTests : DatabaseTest
+public partial class BusinessFlowTests : DatabaseTest
 {
     [IntegrationFact]
     public async Task PA01RegistrationValidatesAndPreventsDuplicateAccounts()
@@ -54,8 +54,10 @@ public class BusinessFlowTests : DatabaseTest
     [IntegrationFact]
     public async Task PA08AggregationIsIdempotentAndFiltersDoNotExposeOtherCenters()
     {
+        var otherRamp = Guid.NewGuid();
         await WithDb(async db =>
         {
+            db.Ramps.Add(new() { Id = otherRamp, CenterId = CenterId, Name = "R2" });
             for (var n = 0; n < 22; n++)
             {
                 var payment = new PaymentAttempt
@@ -63,7 +65,7 @@ public class BusinessFlowTests : DatabaseTest
                     UserId = CitizenId,
                     VehicleId = VehicleId,
                     CenterId = CenterId,
-                    RampId = RampId,
+                    RampId = n == 0 ? otherRamp : RampId,
                     Starts = Starts.AddMinutes(n * 30),
                     Expires = App.Clock.Now.AddMinutes(5),
                     State = "APROBADO"
@@ -74,13 +76,13 @@ public class BusinessFlowTests : DatabaseTest
                     UserId = CitizenId,
                     VehicleId = VehicleId,
                     CenterId = CenterId,
-                    RampId = RampId,
+                    RampId = payment.RampId,
                     Starts = payment.Starts,
                     State = "COMPLETADA"
                 };
                 db.Payments.Add(payment);
                 db.Appointments.Add(appointment);
-                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, InspectorId = InspectorId, Closed = App.Clock.Now.AddHours(-8).AddSeconds(n - 10), Started = App.Clock.Now.AddHours(-9), State = "CERRADA", Result = n < 20 ? "Aprobado" : "Rechazado", Defects = n < 20 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 20 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
+                db.Inspections.Add(new() { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = payment.RampId, InspectorId = InspectorId, Closed = App.Clock.Now.AddHours(-8).AddSeconds(n / 2 - 5), Started = App.Clock.Now.AddHours(-9), State = "CERRADA", Result = n < 20 ? "Aprobado" : "Rechazado", Defects = n < 20 ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = n < 20 ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() });
             }
 
             await db.SaveChangesAsync();
@@ -104,8 +106,72 @@ public class BusinessFlowTests : DatabaseTest
         Assert.Equal(reference.From, alert.From);
         Assert.Equal(reference.To, alert.To);
         Assert.Equal(20, alert.Approved);
-        Assert.Equal(2, await WithDb(db => db.Metrics.CountAsync()));
+        Assert.Equal(3, await WithDb(db => db.Metrics.CountAsync()));
+        var filtered = await Json(await Administrator.GetAsync($"/api/reportes/alertas?desde=2026-11-10&hasta=2026-11-11&rampaId={otherRamp}"));
+        var item = Assert.Single(filtered.GetProperty("items").EnumerateArray());
+        Assert.Equal(21, item.GetProperty("total").GetInt32());
+        Assert.Equal(21, item.GetProperty("inspecciones").GetArrayLength());
+        Assert.Equal(100d * 20 / 21, item.GetProperty("porcentaje").GetDouble());
+        Assert.Equal(JsonValueKind.String, filtered.GetProperty("ultimaActualizacionUtc").ValueKind);
+        using var history = await Citizen.GetAsync($"/api/vehiculos/{VehicleId}/historial?tamano=20");
+        var historyBody = await history.Content.ReadAsByteArrayAsync();
+        Assert.True(historyBody.Length <= 100 * 1024);
+        Assert.True(history.Headers.CacheControl?.NoStore);
+        Assert.Equal(20, (await Json(history)).GetProperty("items").GetArrayLength());
         Assert.Equal(HttpStatusCode.Forbidden, (await Citizen.GetAsync("/api/reportes/inspecciones")).StatusCode);
+    }
+
+    [IntegrationFact]
+    public async Task PA08LateCommitsRefreshAndInvalidatePreviouslyConsolidatedWindows()
+    {
+        var firstClose = App.Clock.Now.AddHours(-8);
+        for (var n = 0; n < 21; n++)
+        {
+            await AddReportInspection(n, n < 20, firstClose.AddSeconds(n));
+        }
+        await AssertReportReconciliation(21);
+        var alertId = await WithDb(db => db.Alerts.Select(x => x.Id).SingleAsync());
+        var originalXmin = await ReadAlertXmin(alertId);
+        await AssertReportReconciliation(21);
+        Assert.Equal(originalXmin, await ReadAlertXmin(alertId));
+        var lateId = await AddReportInspection(21, true, firstClose.AddMilliseconds(500));
+        await AssertReportReconciliation(22);
+        Assert.NotEqual(originalXmin, await ReadAlertXmin(alertId));
+        Assert.Contains(lateId, await WithDb(db => db.Alerts.Where(x => x.Id == alertId).Select(x => x.InspectionIds).SingleAsync()));
+        await AddReportInspection(22, false, firstClose.AddMilliseconds(750));
+        await AssertReportReconciliation(23);
+    }
+
+    private Task<string> ReadAlertXmin(Guid id) => WithDb(db => db.Database.SqlQuery<string>(
+        $"SELECT xmin::text AS \"Value\" FROM autocheck.\"AnomalyAlert\" WHERE \"Id\" = {id}").SingleAsync());
+
+    private Task<Guid> AddReportInspection(int slot, bool approved, DateTimeOffset closed) => WithDb(async db =>
+    {
+        var payment = new PaymentAttempt { UserId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, Starts = Starts.AddMinutes(slot * 30), Expires = App.Clock.Now, State = "APROBADO" };
+        var appointment = new Appointment { AttemptId = payment.Id, UserId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, Starts = payment.Starts, State = "COMPLETADA" };
+        var inspection = new Inspection { AppointmentId = appointment.Id, OwnerId = CitizenId, VehicleId = VehicleId, CenterId = CenterId, RampId = RampId, InspectorId = InspectorId, Started = closed.AddMinutes(-10), Closed = closed, State = "CERRADA", Result = approved ? "Aprobado" : "Rechazado", Defects = approved ? "[]" : "[{\"descripcion\":\"Prueba\",\"severidad\":\"Grave\",\"cantidad\":1}]", Serious = approved ? 0 : 1, MaxMinor = 3, RuleVersion = "V1", MongoId = MongoDB.Bson.ObjectId.GenerateNewId().ToString() };
+        db.Payments.Add(payment);
+        db.Appointments.Add(appointment);
+        db.Inspections.Add(inspection);
+        await db.SaveChangesAsync();
+        return inspection.Id;
+    });
+
+    private async Task AssertReportReconciliation(int count)
+    {
+        using var scope = App.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<AutoCheck.Api.Features.Reportes.Common.ReportConsolidator>().Run(default);
+        var expected = await WithDb(async db => AutoCheck.Api.Features.Reportes.Common.AnomalyWindows.Build(await db.Inspections.ToListAsync()).ToArray());
+        var actual = await WithDb(db => db.Alerts.AsNoTracking().ToListAsync());
+        Assert.Equal(expected.Length, actual.Count);
+        foreach (var window in expected)
+        {
+            var alert = Assert.Single(actual, x => x.FinalInspectionId == window.FinalInspectionId);
+            Assert.Equal(window.InspectionIds, alert.InspectionIds);
+            Assert.Equal(window.Approved, alert.Approved);
+            Assert.Equal(window.From, alert.From);
+        }
+        Assert.Equal(count, await WithDb(db => db.Metrics.SumAsync(x => x.Approved + x.Rejected)));
     }
 
     [IntegrationFact]
@@ -266,7 +332,7 @@ public class BusinessFlowTests : DatabaseTest
         var started = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "start"), HttpStatusCode.Created);
         var inspection = started.GetProperty("id").GetGuid();
         var incomplete = await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{inspection}/cierre", new { versionEsperada = 0 }, "incomplete");
-        Assert.Equal(HttpStatusCode.Conflict, incomplete.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, incomplete.StatusCode);
         await Json(await Send(Inspector, HttpMethod.Put, $"/api/inspecciones/{inspection}/registro", new { versionEsperada = 0, defectos = Array.Empty<object>() }));
         var closed = await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{inspection}/cierre", new { versionEsperada = 1 }, "close"));
         Assert.Equal("Aprobado", closed.GetProperty("resultado").GetString());
@@ -322,14 +388,14 @@ public class BusinessFlowTests : DatabaseTest
         await Json(await Send(Administrator, HttpMethod.Put, $"/api/citas/{appointment}/inspector", new { inspectorId = InspectorId }));
         var started = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "mongo-start"), HttpStatusCode.Created);
         var id = started.GetProperty("id").GetGuid();
-        var defects = new[] { new { descripcion = "Defecto sintético", severidad = "Leve", cantidad = 1 } };
+        var defects = new[] { new { descripcion = "Defecto sintético", severidad = "Leve", cantidad = 1, categoria = "ALUMBRADO", subcategoria = "FAROS" } };
         await Json(await Send(Inspector, HttpMethod.Put, $"/api/inspecciones/{id}/registro", new { versionEsperada = 0, defectos = defects }));
         await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "mongo-close"));
 
         var snapshot = await WithDb(db => db.Inspections.AsNoTracking().SingleAsync(x => x.Id == id));
         var filter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(snapshot.MongoId));
         await using var deliveryApp = App.WithWebHostBuilder(builder => builder
-            .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Mongo:ConnectionString"] = mongo }))
+            .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["MongoDb:ConnectionString"] = mongo }))
             .ConfigureServices(services =>
             {
                 services.RemoveAll<IInspectionArchive>();
@@ -418,7 +484,12 @@ public class BusinessFlowTests : DatabaseTest
     {
         var invalid = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " " }), HttpStatusCode.BadRequest);
         Assert.Equal(3, invalid.EnumerateObject().Count());
+        Assert.Equal("SOLICITUD_INVALIDA", invalid.GetProperty("codigo").GetString());
+        Assert.Equal("NO_DETERMINADA", invalid.GetProperty("categoria").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = new string('a', 2001) })).StatusCode);
         Assert.Equal(0, App.Assistance.Calls);
+        await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " " + new string('a', 2000) + " " }));
+        Assert.Equal(1, App.Assistance.Calls);
         foreach (var mode in new[]
         {
             "invalid",
@@ -434,6 +505,8 @@ public class BusinessFlowTests : DatabaseTest
             Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
             Assert.Equal(3, result.EnumerateObject().Count());
             Assert.Equal("SERVICIO_NO_DISPONIBLE", result.GetProperty("codigo").GetString());
+            Assert.Equal("NO_DETERMINADA", result.GetProperty("categoria").GetString());
+            Assert.Equal("El servicio de asistencia no está disponible temporalmente. Intenta de nuevo.", result.GetProperty("respuesta").GetString());
         }
     }
 

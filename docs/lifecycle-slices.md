@@ -25,7 +25,7 @@ Fronteras comunes: 400 para JSON/validación y filtros; 401 para identidad/sesi�
 | AU02 | `GET /api/auditorias/{id}` | AuditoriaGlobal | `Query(Id) → AuditResponse` | 200; 401,403,404,503 | — |
 | U01 | `GET /api/usuarios/me` | SesionActiva; propio | `Sin cuerpo → UserResponse` | 200; 401,403,404,503 | — |
 | U02 | `PATCH /api/usuarios/me` | SesionActiva; propio | `ProfileRequest → UserResponse` | 200; 400,401,403,404,409,503 | PERFIL_ACTUALIZADO |
-| U03 | `GET /api/usuarios` | GestionUsuarios + alcance de centro | `Query → PageResponse<UserResponse>` | 200; 400,401,403,503 | — |
+| U03 | `GET /api/usuarios` | GestionUsuarios + alcance de centro | `Query → OffsetPageResponse<UserResponse>` | 200; 400,401,403,503 | — |
 | U04 | `GET /api/usuarios/{id}` | GestionUsuarios + alcance de centro | `Query(Id) → UserResponse` | 200; 401,403,404,503 | — |
 | U05 | `DELETE /api/usuarios/{id}?version=N` | GestionUsuarios + alcance; nunca propio | `Command(Id,Version) → NoContent` | 204; 400,401,403,404,409,503 | USUARIO_ARCHIVADO |
 | P01 | `GET /api/roles` | GestionUsuarios | `Sin cuerpo → ItemsResponse<Response>` | 200; 401,403 | — |
@@ -233,10 +233,10 @@ private static async Task<Results<Ok<UserResponse>, ValidationProblem, ProblemHt
 
 **BDD:** escenario `U03` en `behavior/lifecycle-endpoints.feature`; aplicar las fronteras comunes que corresponden a HTTP `200; 400,401,403,503`. No añadir códigos o transiciones fuera de esta fila.
 
-**CDD:** `Query → PageResponse<UserResponse>`. Firmas de records en los archivos indicados; frontera HTTP exacta:
+**CDD:** `Query → OffsetPageResponse<UserResponse>`. Firmas de records en los archivos indicados; frontera HTTP exacta:
 
 ```csharp
-private static async Task<Results<Ok<PageResponse<UserResponse>>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync([AsParameters] Query query, Handler handler, CancellationToken ct);
+private static async Task<Results<Ok<OffsetPageResponse<UserResponse>>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync([AsParameters] Query query, Handler handler, CancellationToken ct);
 ```
 
 **TDD:** Red → LifecycleQueryHandlerTests; LifecycleBoundaryTests; para rutas protegidas añadir `LifecycleBoundaryTests.EveryProtectedLifecycleRouteRejectsMissingAuthenticationBeforeBinding`. Los adaptadores `IData` son puertos exclusivos del caso, sustituibles por NSubstitute; no simular DbSet/IQueryable. Green conserva locks y transacción; Refactor comprueba proyecciones/cancelación y cero warnings.

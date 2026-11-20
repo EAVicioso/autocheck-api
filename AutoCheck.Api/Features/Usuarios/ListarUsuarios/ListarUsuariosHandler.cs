@@ -3,11 +3,11 @@ namespace AutoCheck.Api.Features.Usuarios.ListarUsuarios;
 
 public interface IData
 {
-    Task<PageResponse<UserResponse>> Read(Query query, PageSettings settings, CancellationToken ct);
+    Task<OffsetPageResponse<UserResponse>> Read(Query query, PageSettings settings, CancellationToken ct);
 }
 public sealed class Handler(IData data, AppActor actor)
 {
-    public Task<PageResponse<UserResponse>> Execute(Query query, CancellationToken ct)
+    public Task<OffsetPageResponse<UserResponse>> Execute(Query query, CancellationToken ct)
     {
         actor.RequirePermission(Permissions.Users);
         ApiContract.Filter(query.Rol, Roles.Admin, Roles.Inspector, Roles.Citizen);

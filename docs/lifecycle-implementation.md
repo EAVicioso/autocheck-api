@@ -56,7 +56,7 @@ Configurar en el almacén protegido de AutoCheck.Api (UserSecretsId del csproj),
 | `Certificates:PfxPath`, `Certificates:PfxPassword` | PFX académico con clave privada, fuera del repositorio. |
 | `Certificates:PublicBaseUrl` | URL pública usada al construir QR. |
 | `Sandbox:WebhookSecret` | HMAC del pago simulado del fixture. |
-| `Mongo:ConnectionString` | Para validar Atlas con `AUTOCHECK_ATLAS_E2E=true`, URI SRV de ClusterAC con TLS y permisos sobre `autocheck_inspections_db.reportes_defectos`. |
+| `MongoDb:ConnectionString` | Para validar Atlas con `AUTOCHECK_ATLAS_E2E=true`, URI SRV de ClusterAC con TLS y permisos sobre `AutoCheckReports.Reports`. |
 
 Las pruebas comprueban primero que `autocheck_api` puede conectarse y que no hay migraciones pendientes. `SupabaseLifecycleTests` usa la cuenta confirmada para crear, consultar, editar y archivar un vehículo y comprobar auditoría con un DbContext nuevo. `SupabaseFullLifecycleTests` crea tres identidades sintéticas con alias únicos del buzón E2E (debe admitir plus addressing y usuario local de hasta 48 caracteres), eleva solo su administrador de fixture en PostgreSQL con auditoría y recorre:
 
@@ -66,7 +66,7 @@ Las pruebas comprueban primero que `autocheck_api` puede conectarse y que no hay
 4. Listado/detalle, descarga PDF repetida, SHA-256, firma CMS independiente, QR de cinco campos e historial.
 5. Auditoría con cursor, actividad, refresh, recuperación/reset, revocación de JWT anteriores, logout y archivado lógico.
 
-El despachador filtra por tipo y agregado sintético. Con `AUTOCHECK_ATLAS_E2E=true` y `Mongo:ConnectionString` autorizado para `ClusterAC`, el harness también entrega `COPIA_MONGO` y compara el documento de Atlas con el cierre de PostgreSQL por ObjectId, resultado, versión de reglas y conteos. Al finalizar, bloquea las identidades nuevas en Auth, inactiva sus usuarios y sesiones locales y retira únicamente sus mensajes técnicos pendientes. Conserva cierres, certificados y auditorías. Los correos de registro y recuperación se dirigen al buzón sintético.
+El despachador filtra por tipo y agregado sintético. Con `AUTOCHECK_ATLAS_E2E=true` y `MongoDb:ConnectionString` autorizado para `ClusterAC`, el harness también entrega `COPIA_MONGO` y compara el documento de Atlas con el cierre de PostgreSQL por ObjectId, resultado, versión de reglas y conteos. Al finalizar, bloquea las identidades nuevas en Auth, inactiva sus usuarios y sesiones locales y retira únicamente sus mensajes técnicos pendientes. Conserva cierres, certificados y auditorías. Los correos de registro y recuperación se dirigen al buzón sintético.
 
 Después de corregir/configurar secretos:
 
@@ -80,13 +80,19 @@ Remove-Item Env:AUTOCHECK_SUPABASE_E2E
 
 El intento alojado del 19/11/2026 se detuvo antes de crear datos al comprobar que faltaba la cuenta sintética. También faltan la credencial Auth Admin, el PFX académico y la URI del adaptador de Atlas. La comprobación directa de PostgreSQL agotó el tiempo de conexión al pooler. El 28P01 corresponde al intento anterior. El endpoint de claves públicas de Supabase Auth respondió 200 y el conector confirmó seis migraciones.
 
-El conector de Atlas abrió `AutoCheck / ClusterAC` (proyecto `6ae7feb8191eab6c71464edb`). El proyecto `Project 0` de la URL compartida no mostró clústeres. `ClusterAC` tiene `AutoCheckReports.Reports`. El destino del adaptador documentado en la arquitectura es `autocheck_inspections_db.reportes_defectos`. El conector no encontró esa colección. La conexión TCP directa al primer nodo agotó el tiempo desde la estación de prueba.
+El conector de Atlas abrió `AutoCheck / ClusterAC` (proyecto `6ae7feb8191eab6c71464edb`). El proyecto `Project 0` de la URL compartida no mostró clústeres. `ClusterAC` tiene `AutoCheckReports.Reports`. La rama anterior a la integración con el PR #12 proyectaba en `autocheck_inspections_db.reportes_defectos`. El conector aún no encontró esa colección en esa revisión. La conexión TCP directa al primer nodo agotó el tiempo desde la estación de prueba.
 
 El 20/11/2026, Edge confirmó el pooler IPv4 de sesión de AutoCheckBD y la estación logró abrir TCP al puerto 5432. La configuración local tiene el host, el usuario con sufijo del proyecto, la base y TLS VerifyFull esperados. PostgreSQL rechazó la contraseña de `autocheck_api` con `28P01`. El conector confirmó las seis migraciones. En Atlas respondieron por TCP los tres nodos de ClusterAC y el panel señaló que la IP actual carecía de autorización. Quedaron preparados en Edge el formulario para una regla temporal de seis horas y el de una clave Supabase dedicada al harness, pendientes de confirmación. El E2E alojado requiere además las credenciales sintéticas, el PFX académico y la URI de una cuenta de Atlas con acceso al destino del adaptador.
 
 Con la regla temporal de Atlas activa, el driver .NET autenticó `autocheck_api` con SCRAM y TLS en ClusterAC. Antes de asignar el rol de proyección, la prueba de solo lectura confirmó acceso a `AutoCheckReports.Reports` y denegación (código 8000) en `autocheck_inspections_db.reportes_defectos`. Evidencia en `artifacts/atlas-temporary-ip-scope.log`.
 
 Atlas asignó después a `autocheck_api` el rol `autocheck_inspection_projection`, limitado a `find`, `insert` y `update` en `autocheck_inspections_db.reportes_defectos`. El adaptador real entregó y reentregó la misma inspección sintética en ClusterAC. Se verificaron el mismo ObjectId, un solo documento, la versión de reglas, el defecto y los conteos. El documento sintético se conservó como evidencia. Esta validación cubre el adaptador y su destino alojado. El E2E conjunto por HTTP, Supabase y Atlas sigue pendiente. Evidencia en `artifacts/atlas-projection-e2e.log`.
+
+## Integración con el PR #12
+
+La rama conserva el destino canónico `AutoCheckReports.Reports` y `MongoDb:ConnectionString` establecidos en main. El adaptador integrado escribió y repitió una proyección sintética con SCRAM/TLS. La colección canónica conservó un documento con el mismo ObjectId. La evidencia de esa ejecución está en `artifacts/atlas-integrated-projection.log`. La colección anterior contiene la evidencia histórica de una prueba previa.
+
+La comparación OpenAPI con main terminó sin cambios incompatibles según oasdiff. La actualización aislada aplicó las nueve migraciones y conservó el vehículo, la inspección cerrada y la auditoría de la base. Los PATCH de perfil, acceso y vehículo requieren la versión vigente como precondición de concurrencia. Los clientes deben enviarla antes de desplegar la rama. El E2E HTTP alojado de los seis módulos permanece pendiente de una cuenta sintética confirmada, Auth Admin y el PFX académico.
 
 ## Validación local del 19/11/2026
 

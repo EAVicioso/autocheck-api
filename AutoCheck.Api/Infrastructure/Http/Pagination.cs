@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.WebUtilities;
 namespace AutoCheck.Api.Infrastructure;
 
 public sealed record PageResponse<T>(ImmutableArray<T> Items, int? Pagina, string? SiguienteCursor);
+public sealed record OffsetPageResponse<T>(ImmutableArray<T> Items, int Pagina, string? SiguienteCursor = null);
+
 public sealed record SeekCursor(int Version, string Orden, string Direccion, DateTimeOffset Fecha, Guid Id);
 public sealed record PageSettings(int Page, int Size, string Order, bool Descending, SeekCursor? Cursor)
 {

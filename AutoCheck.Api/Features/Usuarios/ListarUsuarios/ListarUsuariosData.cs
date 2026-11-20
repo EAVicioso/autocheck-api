@@ -3,7 +3,7 @@ namespace AutoCheck.Api.Features.Usuarios.ListarUsuarios;
 
 public sealed class Data(AutoCheckDb db, AppActor actor) : IData
 {
-    public async Task<PageResponse<UserResponse>> Read(Query query, PageSettings settings, CancellationToken ct)
+    public async Task<OffsetPageResponse<UserResponse>> Read(Query query, PageSettings settings, CancellationToken ct)
     {
         var q = db.Users.AsNoTracking().Where(x => (query.IncluirArchivados == true || x.ArchivedAt == null) && (actor.CenterId == null || x.CenterId == actor.CenterId)
             && (query.Rol == null || x.Role == query.Rol) && (query.Activo == null || x.Active == query.Activo) && (query.Nombre == null || x.Name.Contains(query.Nombre)));

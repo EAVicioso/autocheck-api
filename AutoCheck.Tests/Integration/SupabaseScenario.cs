@@ -40,7 +40,7 @@ public sealed class SupabaseScenario : IAsyncDisposable
         validateAtlas = Environment.GetEnvironmentVariable("AUTOCHECK_ATLAS_E2E") == "true";
         if (validateAtlas)
         {
-            var atlas = new MongoUrl(Required(config, "Mongo:ConnectionString"));
+            var atlas = new MongoUrl(Required(config, "MongoDb:ConnectionString"));
             Assert.True(atlas.Scheme == MongoDB.Driver.Core.Configuration.ConnectionStringScheme.MongoDBPlusSrv &&
                 atlas.Server.Host == "clusterac.thvhywd.mongodb.net" && atlas.UseTls && !atlas.AllowInsecureTls,
                 "The hosted Atlas fixture accepts only AutoCheck / ClusterAC via SRV and validated TLS.");

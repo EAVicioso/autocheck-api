@@ -26,7 +26,7 @@ public sealed class LifecycleQueryHandlerTests
         var handler = new Users.Handler(data, actor);
         var query = new Users.Query(Roles.Citizen, true, false, "Luis", 2, 5, "nombre", "desc");
         using var cancellation = new CancellationTokenSource();
-        data.Read(query, Arg.Any<PageSettings>(), cancellation.Token).Returns(new PageResponse<AutoCheck.Api.Features.Usuarios.Common.UserResponse>([], 2, null));
+        data.Read(query, Arg.Any<PageSettings>(), cancellation.Token).Returns(new OffsetPageResponse<AutoCheck.Api.Features.Usuarios.Common.UserResponse>([], 2, null));
         var result = await handler.Execute(query, cancellation.Token);
         Assert.Empty(result.Items);
         await data.Received(1).Read(query, Arg.Is<PageSettings>(p => p.Page == 2 && p.Size == 5 && p.Descending), cancellation.Token);

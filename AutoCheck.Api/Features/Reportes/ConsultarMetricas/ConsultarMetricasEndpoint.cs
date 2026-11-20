@@ -1,3 +1,4 @@
+// AutoCheck / INTEC, SRS 1.1; Section C / PA-05/08/09/10. Version 1.0; history: Git.
 using AutoCheck.Api.Features.Reportes.Common;
 using static AutoCheck.Api.Features.Reportes.Common.ReportSupport;
 
@@ -29,11 +30,11 @@ public static class ConsultarMetricasEndpoint
                 porcentajeRechazo = total == 0 ? (double?)null : 100d * rejected / total,
                 estado = total == 0 ? "Sin datos" : "Con datos",
                 ultimaActualizacionUtc = await db.Aggregation.Select(x => (DateTimeOffset?)x.Updated).SingleOrDefaultAsync(ct),
-                items = await q.OrderBy(x => x.Day).ThenBy(x => x.CenterId).ThenBy(x => x.RampId).ThenBy(x => x.InspectorId).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h)).Select(x => new { dia = x.Day, centroId = x.CenterId, rampaId = x.RampId, inspectorId = x.InspectorId, aprobadas = x.Approved, rechazadas = x.Rejected }).ToListAsync(ct)
+                items = await q.OrderBy(x => x.Day).ThenBy(x => x.CenterId).ThenBy(x => x.RampId).ThenBy(x => x.InspectorId).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h)).Select(x => new { dia = x.Day, centroId = x.CenterId, rampaId = x.RampId, inspectorId = x.InspectorId, aprobadas = x.Approved, rechazadas = x.Rejected, cerradas = x.Approved + x.Rejected, porcentajeRechazo = x.Approved + x.Rejected == 0 ? (double?)null : 100d * x.Rejected / (x.Approved + x.Rejected) }).ToListAsync(ct)
             };
         }).Document<MetricsResponse>("ConsultarMetricas", "RF-DAS-01/02 / PA-08a,d");
     }
 }
 
 public sealed record MetricsResponse(int Cerradas, int Aprobadas, int Rechazadas, double? PorcentajeRechazo, string Estado, DateTimeOffset? UltimaActualizacionUtc, IEnumerable<MetricRow> Items);
-public sealed record MetricRow(DateOnly Dia, Guid CentroId, Guid RampaId, Guid InspectorId, int Aprobadas, int Rechazadas);
+public sealed record MetricRow(DateOnly Dia, Guid CentroId, Guid RampaId, Guid InspectorId, int Aprobadas, int Rechazadas, int Cerradas, double? PorcentajeRechazo);

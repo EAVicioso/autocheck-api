@@ -1,3 +1,4 @@
+// AutoCheck / INTEC, SRS 1.1; RF-CHAT-02 / PA-09. Version 1.1; history: Git.
 using System.Net.Http.Json;
 
 namespace AutoCheck.Api.Features.Chatbot.Common;
@@ -25,7 +26,7 @@ public sealed class GeminiAssistance(HttpClient http, IConfiguration config) : I
         using var response = await http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        var text = json.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
+        var text = json.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString() ?? throw ApiContract.Unavailable();
         using var answer = JsonDocument.Parse(text);
         var root = answer.RootElement;
         if (root.EnumerateObject().Count() != 3)

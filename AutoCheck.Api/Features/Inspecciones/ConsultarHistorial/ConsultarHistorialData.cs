@@ -11,9 +11,9 @@ public sealed class Data(AutoCheckDb db, AppActor actor) : IData
             AppActor.Deny();
         }
         var range = ApiContract.UtcRange(query.Desde, query.Hasta);
-        var q = Authorized(query.Id).Where(x => (query.Resultado == null || x.Result == query.Resultado) && (range.From == null || x.Closed >= range.From) && (range.To == null || x.Closed < range.To));
+        var q = Authorized(query.Id).Where(x => (query.Resultado == null || x.Result == query.Resultado) && (query.Estado == null || x.State == query.Estado) && (range.From == null || x.Started >= range.From) && (range.To == null || x.Started < range.To));
         q = Seek(q, settings);
-        var ordered = settings.Descending ? q.OrderByDescending(x => x.Closed).ThenByDescending(x => x.Id) : q.OrderBy(x => x.Closed).ThenBy(x => x.Id);
+        var ordered = settings.Descending ? q.OrderByDescending(x => x.Closed).ThenBy(x => x.Id) : q.OrderBy(x => x.Closed).ThenBy(x => x.Id);
         var rows = await ordered.Skip(settings.Cursor == null ? (settings.Page - 1) * settings.Size : 0).Take(settings.Size + 1).Select(x => new HistoryResponse(x.Id, x.Closed, x.Result, x.RuleVersion, x.MaxMinor, x.Minor, x.Medium, x.Serious, x.CenterId, x.PreviousId)).ToArrayAsync(ct);
         var items = rows.Take(settings.Size).ToArray();
         return new(items.ToImmutableArray(), settings.Cursor == null ? settings.Page : null, rows.Length > settings.Size ? settings.Encode(items[^1].CierreUtc!.Value, items[^1].Id) : null);
@@ -25,6 +25,6 @@ public sealed class Data(AutoCheckDb db, AppActor actor) : IData
         {
             return q;
         }
-        return settings.Descending ? q.Where(x => x.Closed < seek.Fecha || (x.Closed == seek.Fecha && x.Id.CompareTo(seek.Id) < 0)) : q.Where(x => x.Closed > seek.Fecha || (x.Closed == seek.Fecha && x.Id.CompareTo(seek.Id) > 0));
+        return settings.Descending ? q.Where(x => x.Closed < seek.Fecha || (x.Closed == seek.Fecha && x.Id.CompareTo(seek.Id) > 0)) : q.Where(x => x.Closed > seek.Fecha || (x.Closed == seek.Fecha && x.Id.CompareTo(seek.Id) > 0));
     }
 }

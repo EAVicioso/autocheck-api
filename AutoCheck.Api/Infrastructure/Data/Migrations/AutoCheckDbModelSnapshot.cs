@@ -93,6 +93,8 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Day", "Id");
+
                     b.HasIndex("InspectorId", "CenterId", "FinalInspectionId")
                         .IsUnique();
 
@@ -511,9 +513,20 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
 
                     b.HasIndex("PreviousId");
 
+                    b.HasIndex("Started", "Id")
+                        .IsDescending(true, false);
+
                     b.HasIndex("VehicleId", "Closed");
 
+                    b.HasIndex("OwnerId", "Started", "Id")
+                        .IsDescending(false, true, false);
+
+                    b.HasIndex("VehicleId", "Started", "Closed");
+
                     b.HasIndex("InspectorId", "CenterId", "Closed", "Id");
+
+                    b.HasIndex("InspectorId", "CenterId", "Started", "Id")
+                        .IsDescending(false, false, true, false);
 
                     b.ToTable("Inspection", "autocheck");
                 });

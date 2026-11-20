@@ -33,6 +33,21 @@ public class ReportTests
     }
 
     [Fact]
+    public void PA08TiedClosingTimesUseInspectionIdAsStableTieBreaker()
+    {
+        var rows = Rows(22, 22);
+        var close = rows[0].Closed;
+        foreach (var row in rows)
+        {
+            row.Closed = close;
+        }
+        var expected = rows.OrderBy(x => x.Id).ToArray();
+        var actual = AnomalyWindows.Build(rows.Reverse()).ToArray();
+        Assert.Equal(expected[20].Id, actual[0].FinalInspectionId);
+        Assert.Equal(expected.Take(21).Select(x => x.Id), actual[0].InspectionIds);
+    }
+
+    [Fact]
     public void PA08aLocalMidnightUsesHalfOpenDayBoundary()
     {
         Assert.Equal(new DateOnly(2026, 11, 11), DominicanTime.Date(DateTimeOffset.Parse("2026-11-12T03:59:59Z", System.Globalization.CultureInfo.InvariantCulture)));
