@@ -18,6 +18,12 @@ public static class IniciarInspeccionEndpoint
         actor.RequireRole(Roles.Inspector);
         var a = await db.Appointments.SingleOrDefaultAsync(x => x.Id == r.CitaId, ct) ?? throw ApiContract.Missing();
         await db.LockAsync("center:" + a.CenterId, ct);
+        await db.LockAsync("user:" + actor.Id, ct);
+        await db.LockAsync("vehicle:" + a.VehicleId, ct);
+        if (!await db.Users.AnyAsync(x => x.Id == actor.Id && x.Active && x.ArchivedAt == null, ct) || !await db.Vehicles.AnyAsync(x => x.Id == a.VehicleId && x.ArchivedAt == null, ct))
+        {
+            AppActor.Deny();
+        }
         await db.LockAsync("rules", ct);
         await db.Entry(a).ReloadAsync(ct);
         if (a.InspectorId != actor.Id || actor.CenterId != a.CenterId)

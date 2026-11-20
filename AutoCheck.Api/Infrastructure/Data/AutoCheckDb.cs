@@ -1,7 +1,7 @@
 // AutoCheck academic prototype, SRS 1.1; RD-04, RF-INS-01, RS-03.
 namespace AutoCheck.Api.Infrastructure.Data;
 
-public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options) : DbContext(options)
+public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options, IHttpContextAccessor? accessor = null) : DbContext(options)
 {
     public DbSet<UserAccount> Users => Set<UserAccount>();
     public DbSet<AccountLock> AccountLocks => Set<AccountLock>();
@@ -26,9 +26,26 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options) : DbConte
     public DbSet<AnomalyAlert> Alerts => Set<AnomalyAlert>();
     public DbSet<AggregationState> Aggregation => Set<AggregationState>();
 
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        var address = accessor?.HttpContext?.Connection.RemoteIpAddress;
+        foreach (var entry in ChangeTracker.Entries<AuditEvent>().Where(x => x.State == EntityState.Added && x.Entity.Ip == null))
+        {
+            entry.Entity.Ip = address;
+        }
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("autocheck");
+        modelBuilder.Entity<UserAccount>().Property(x => x.Version).IsConcurrencyToken().HasDefaultValue(1L);
+        modelBuilder.Entity<Vehicle>().Property(x => x.Version).IsConcurrencyToken().HasDefaultValue(1L);
+        modelBuilder.Entity<AuditEvent>().Property(x => x.Before).HasColumnType("jsonb");
+        modelBuilder.Entity<AuditEvent>().Property(x => x.After).HasColumnType("jsonb");
+        modelBuilder.Entity<Vehicle>().HasIndex(x => new { x.OwnerId, x.ArchivedAt, x.Id });
+        modelBuilder.Entity<Certificate>().HasIndex(x => new { x.OwnerId, x.Issued, x.Id });
+        modelBuilder.Entity<AuditEvent>().HasIndex(x => new { x.At, x.Id });
         modelBuilder.Entity<UserAccount>().HasIndex(x => x.AuthId).IsUnique();
         modelBuilder.Entity<UserAccount>().HasIndex(x => x.Email).IsUnique();
         modelBuilder.Entity<UserAccount>().Property(x => x.Email).HasMaxLength(254);

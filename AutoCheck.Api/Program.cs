@@ -16,6 +16,7 @@ using AutoCheck.Api.Features.Citas.Common;
 using AutoCheck.Api.Features.Inspecciones;
 using AutoCheck.Api.Features.Inspecciones.Common;
 using AutoCheck.Api.Features.Pagos;
+using AutoCheck.Api.Features.Permisos;
 using AutoCheck.Api.Features.Reportes;
 using AutoCheck.Api.Features.Reportes.Common;
 using AutoCheck.Api.Features.Usuarios;
@@ -31,13 +32,18 @@ using Scalar.AspNetCore;
 
 var migrate = args.Contains("--migrate");
 var builder = WebApplication.CreateBuilder(args.Where(argument => !DatabaseCommands.IsCommand(argument) && argument != "--check-smtp").ToArray());
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi(o => o.AddBearerContracts());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddSingleton<TimeProvider, ServerClock>();
 builder.Services.AddDbContext<AutoCheckDb>((services, o) => o.UseNpgsql(PostgresConnection.Resolve(services.GetRequiredService<IConfiguration>(), migrate)));
 builder.Services.AddScoped<AppActor>();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<Mutation>();
+builder.Services.AddLifecycleSlices();
 builder.Services.AddScoped<PasswordResetRevocation>();
+builder.Services.AddScoped<IPasswordResetRevocation>(services => services.GetRequiredService<PasswordResetRevocation>());
 builder.Services.AddScoped<AutoCheck.Api.Features.Auth.RestablecerContrasena.RestablecerContrasenaHandler>();
 builder.Services.AddScoped<PaymentWorkflow>();
 builder.Services.AddSingleton<IPaymentSandbox, AcademicPaymentSandbox>();
@@ -60,6 +66,7 @@ builder.Services.AddCors(o => o.AddPolicy("frontend", p => p.WithOrigins((builde
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
     o.MapInboundClaims = false;
+    o.Events = new JwtBearerEvents { OnTokenValidated = TransportClaims.Validate };
     var issuer = (builder.Configuration["Supabase:Url"] ?? "https://unconfigured.invalid").TrimEnd('/') + "/auth/v1";
     o.TokenValidationParameters = new TokenValidationParameters
     {
@@ -70,6 +77,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         ValidateIssuerSigningKey = true,
         ValidateLifetime = true,
         RequireSignedTokens = true,
+        ValidAlgorithms = TransportClaims.Algorithms(builder.Environment.IsEnvironment("Testing")),
         ClockSkew = TimeSpan.FromSeconds(15)
     };
     if (builder.Environment.IsEnvironment("Testing"))
@@ -82,10 +90,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         o.ConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(issuer + "/.well-known/jwks.json", new SupabaseJwks(issuer), new HttpDocumentRetriever { RequireHttps = true });
     }
 });
-builder.Services.AddAuthorization(options => options.FallbackPolicy = options.DefaultPolicy);
+builder.Services.AddAccessPolicies();
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = 429;
+    o.OnRejected = RateLimitResponse.Rejected;
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(h => h.User.Identity?.IsAuthenticated == true && new[] { "POST", "PUT", "PATCH", "DELETE" }.Contains(h.Request.Method) ? RateLimitPartition.GetFixedWindowLimiter(h.User.FindFirst("sub")?.Value ?? "authenticated", _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }) : RateLimitPartition.GetNoLimiter("read"));
     o.AddPolicy("auth", h => RateLimitPartition.GetFixedWindowLimiter(h.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     o.AddPolicy("public", h => RateLimitPartition.GetFixedWindowLimiter(h.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
@@ -105,7 +114,8 @@ if (args.Any(DatabaseCommands.IsCommand))
 }
 
 app.UseMiddleware<ApiResponseHeaders>();
-app.UseMiddleware<ApiErrors>();
+app.UseExceptionHandler();
+app.UseMiddleware<SecurityAuditMiddleware>();
 app.UseStatusCodePages(async context =>
 {
     var http = context.HttpContext;
@@ -133,6 +143,7 @@ app.MapGet("/health", (TimeProvider clock) => Results.Ok(new { status = "Healthy
 app.MapGet("/health/ready", DatabaseReadiness.Check).AllowAnonymous().WithName("Readiness").Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status503ServiceUnavailable);
 app.MapAuth();
 app.MapUsers();
+app.MapPermissions();
 app.MapVehicles();
 app.MapCenters();
 app.MapAppointments();

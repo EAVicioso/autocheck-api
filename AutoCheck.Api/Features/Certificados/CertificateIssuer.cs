@@ -129,7 +129,7 @@ public sealed class CertificateIssuer(AutoCheckDb db, TimeProvider clock, IAcade
         var i = await db.Inspections.SingleOrDefaultAsync(x => x.Id == inspectionId, ct) ?? throw ApiContract.Missing();
         if (i.State != "CERRADA" || i.Result != "Aprobado")
         {
-            throw ApiContract.Conflict("INSPECCION_NO_APROBADA", "Solo una inspección aprobada puede generar certificado.");
+            throw ApiContract.Conflict(ApiErrorCode.InspeccionNoAprobada, "Solo una inspección aprobada puede generar certificado.");
         }
 
         var c = await db.Certificates.SingleOrDefaultAsync(x => x.InspectionId == inspectionId, ct);

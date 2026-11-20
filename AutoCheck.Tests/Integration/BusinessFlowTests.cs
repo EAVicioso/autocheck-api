@@ -15,7 +15,11 @@ using AutoCheck.Api.Infrastructure.Data;
 using AutoCheck.Api.Infrastructure.Security;
 using AutoCheck.Tests.Features.Certificados;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using Npgsql;
 
 namespace AutoCheck.Tests.Integration;
@@ -306,6 +310,69 @@ public class BusinessFlowTests : DatabaseTest
         var history = await Json(await Citizen.GetAsync($"/api/vehiculos/{VehicleId}/historial"));
         Assert.Single(history.GetProperty("items").EnumerateArray());
         await Assert.ThrowsAsync<PostgresException>(() => WithDb(db => db.Database.ExecuteSqlInterpolatedAsync($"UPDATE autocheck.\"Inspection\" SET \"Result\"='Rechazado' WHERE \"Id\"={inspection}")));
+    }
+
+    [MongoIntegrationFact(requiresPostgres: true)]
+    public async Task PA05HttpCloseProjectsExactlyOneDocumentThroughTheRealMongoAdapter()
+    {
+        var mongo = MongoTestConnection.Loopback();
+        var hold = await Json(await Start(), HttpStatusCode.Created);
+        var payment = await Webhook(hold.GetProperty("intentoId").GetGuid());
+        var appointment = payment.GetProperty("citaId").GetGuid();
+        await Json(await Send(Administrator, HttpMethod.Put, $"/api/citas/{appointment}/inspector", new { inspectorId = InspectorId }));
+        var started = await Json(await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "mongo-start"), HttpStatusCode.Created);
+        var id = started.GetProperty("id").GetGuid();
+        var defects = new[] { new { descripcion = "Defecto sintético", severidad = "Leve", cantidad = 1 } };
+        await Json(await Send(Inspector, HttpMethod.Put, $"/api/inspecciones/{id}/registro", new { versionEsperada = 0, defectos = defects }));
+        await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "mongo-close"));
+
+        var snapshot = await WithDb(db => db.Inspections.AsNoTracking().SingleAsync(x => x.Id == id));
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(snapshot.MongoId));
+        await using var deliveryApp = App.WithWebHostBuilder(builder => builder
+            .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["Mongo:ConnectionString"] = mongo }))
+            .ConfigureServices(services =>
+            {
+                services.RemoveAll<IInspectionArchive>();
+                services.AddScoped<IInspectionArchive, MongoInspectionArchive>();
+            }));
+        var collection = deliveryApp.Services.GetRequiredService<MongoArchiveConnection>().Collection;
+        try
+        {
+            Assert.Equal(0, await collection.CountDocumentsAsync(filter));
+            await DeliverMongo(deliveryApp.Services, id);
+            // Simulate delivery replay after a successful write whose acknowledgement was lost.
+            await WithDb(db => db.Outbox.Where(x => x.AggregateId == id && x.Kind == "COPIA_MONGO")
+                .ExecuteUpdateAsync(set => set.SetProperty(x => x.Completed, (DateTimeOffset?)null)));
+            await DeliverMongo(deliveryApp.Services, id);
+            await VerifyMongoProjection(collection, filter, snapshot);
+        }
+        finally
+        {
+            await collection.DeleteOneAsync(filter);
+        }
+    }
+
+    private static async Task DeliverMongo(IServiceProvider services, Guid id)
+    {
+        using var scope = services.CreateScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<OutboxDispatcher>();
+        Assert.True(await dispatcher.DispatchOne(default, "COPIA_MONGO", id));
+        var db = scope.ServiceProvider.GetRequiredService<AutoCheckDb>();
+        Assert.True(await db.Outbox.AnyAsync(x => x.AggregateId == id && x.Kind == "COPIA_MONGO" && x.Completed != null && x.Attempts == 0));
+    }
+
+    private static async Task VerifyMongoProjection(IMongoCollection<BsonDocument> collection, FilterDefinition<BsonDocument> filter, Inspection inspection)
+    {
+        Assert.Equal(1, await collection.CountDocumentsAsync(filter));
+        var document = await collection.Find(filter).SingleAsync();
+        Assert.Equal(inspection.Id.ToString(), document["inspeccionId"].AsString);
+        Assert.Equal(inspection.RuleVersion, document["versionReglas"].AsString);
+        Assert.Equal(inspection.Result, document["resultado"].AsString);
+        Assert.Equal(inspection.Minor, document["L"].AsInt32);
+        Assert.Equal(inspection.Medium, document["Md"].AsInt32);
+        Assert.Equal(inspection.Serious, document["G"].AsInt32);
+        Assert.Equal(inspection.MaxMinor, document["M"].AsInt32);
+        Assert.Equal("Defecto sintético", Assert.Single(document["defectos"].AsBsonArray)["descripcion"].AsString);
     }
 
     [IntegrationFact]

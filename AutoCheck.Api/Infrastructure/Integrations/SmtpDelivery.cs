@@ -18,7 +18,7 @@ public sealed class SmtpDelivery(ISmtpClient client, IOptions<SmtpOptions> optio
         _ = settings.Sender();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
-        client.Timeout = 5000;
+        client.Timeout = 10000; // The linked five-second budget is the single cancellation authority.
         await client.ConnectAsync(settings.Host, settings.Port, settings.SocketOptions, deadline.Token);
         await client.AuthenticateAsync(settings.Username, settings.Password, deadline.Token);
         await command(client, deadline.Token);

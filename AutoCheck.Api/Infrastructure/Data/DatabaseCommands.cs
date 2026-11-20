@@ -21,11 +21,11 @@ public static class DatabaseCommands
         }
         if (arguments.Contains("--bootstrap-admin"))
         {
-            await Bootstrap(db, app.Configuration);
+            await Bootstrap(db, app.Configuration, app.Services.GetRequiredService<TimeProvider>());
         }
     }
 
-    private static async Task Bootstrap(AutoCheckDb db, IConfiguration configuration)
+    private static async Task Bootstrap(AutoCheckDb db, IConfiguration configuration, TimeProvider clock)
     {
         var id = Guid.Parse(configuration["Bootstrap:AuthId"] ?? throw new InvalidOperationException("Bootstrap:AuthId is required."));
         var email = ApiContract.NormalizeEmail(configuration["Bootstrap:Email"] ?? throw new InvalidOperationException("Bootstrap:Email is required."));
@@ -38,7 +38,7 @@ public static class DatabaseCommands
         user.Role = Roles.Admin;
         user.CenterId = null;
         user.Permissions = Permissions.All.ToArray();
-        db.Audit.Add(new AuditEvent { At = DateTimeOffset.UtcNow, Operation = "BOOTSTRAP_ADMIN", Entity = user.Id.ToString(), Outcome = "CONFIGURADO", Correlation = Guid.NewGuid().ToString() });
+        db.Audit.Add(new AuditEvent { At = clock.GetUtcNow(), Operation = "BOOTSTRAP_ADMIN", Entity = user.Id.ToString(), Outcome = "CONFIGURADO", Correlation = Guid.NewGuid().ToString() });
         await db.SaveChangesAsync();
     }
 }

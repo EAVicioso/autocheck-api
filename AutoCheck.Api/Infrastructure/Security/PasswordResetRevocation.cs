@@ -1,7 +1,12 @@
 namespace AutoCheck.Api.Infrastructure.Security;
 
 // Only PostgreSQL operations. Callers never hold a transaction over Auth HTTP.
-public sealed class PasswordResetRevocation(AutoCheckDb db, TimeProvider clock)
+public interface IPasswordResetRevocation
+{
+    Task<Guid> Prepare(Guid authId, string correlation, CancellationToken ct);
+    Task Finish(Guid operationId, string outcome, CancellationToken ct);
+}
+public sealed class PasswordResetRevocation(AutoCheckDb db, TimeProvider clock) : IPasswordResetRevocation
 {
     public static readonly TimeSpan RecoveryDelay = TimeSpan.FromSeconds(30);
 
@@ -59,7 +64,10 @@ public sealed class PasswordResetRevocation(AutoCheckDb db, TimeProvider clock)
         operation.Finished = clock.GetUtcNow();
         db.Audit.Add(new AuditEvent
         {
-            ActorId = user.Id, At = clock.GetUtcNow(), Entity = user.Id.ToString(), Correlation = operation.Correlation,
+            ActorId = user.Id,
+            At = clock.GetUtcNow(),
+            Entity = user.Id.ToString(),
+            Correlation = operation.Correlation,
             Operation = outcome == PasswordResetStates.Rejected ? "RESTABLECIMIENTO_RECHAZADO" : "RESTABLECIMIENTO_CONTRASENA",
             Outcome = outcome == PasswordResetStates.Completed ? "SESIONES_REVOCADAS" : outcome
         });

@@ -12,6 +12,7 @@ public static class CertificateEndpoints
         routes.MapSolicitarCertificado();
         var g = routes.MapGroup("/api/certificados").WithTags("Certificados");
         g.MapObtenerCertificado();
+        AutoCheck.Api.Features.Certificados.ListarCertificados.ListarCertificadosEndpoint.MapListarCertificados(g);
         g.MapDescargarCertificado();
         g.MapVerificarCertificado();
     }

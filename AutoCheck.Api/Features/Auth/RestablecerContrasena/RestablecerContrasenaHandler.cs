@@ -1,6 +1,6 @@
 namespace AutoCheck.Api.Features.Auth.RestablecerContrasena;
 
-public sealed class RestablecerContrasenaHandler(IIdentityProvider provider, PasswordResetRevocation revocation)
+public sealed class RestablecerContrasenaHandler(IIdentityProvider provider, IPasswordResetRevocation revocation)
 {
     public async Task Execute(ResetRequest request, string correlation, CancellationToken requestAborted)
     {
@@ -37,7 +37,7 @@ public sealed class RestablecerContrasenaHandler(IIdentityProvider provider, Pas
     {
         if (outcome == PasswordResetStates.Rejected)
         {
-            throw new ApiException(401, "RECUPERACION_INVALIDA", "El enlace o la contraseña de recuperación no son válidos.");
+            throw new ApiException(401, ApiErrorCode.RecuperacionInvalida, "El enlace o la contraseña de recuperación no son válidos.");
         }
         if (outcome == PasswordResetStates.Uncertain)
         {

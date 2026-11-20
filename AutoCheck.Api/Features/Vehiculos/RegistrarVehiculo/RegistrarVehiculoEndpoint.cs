@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using AutoCheck.Api.Features.Vehiculos.Common;
 using static AutoCheck.Api.Features.Vehiculos.Common.VehicleSupport;
 
@@ -7,17 +8,11 @@ public static class RegistrarVehiculoEndpoint
 {
     public static void MapRegistrarVehiculo(this IEndpointRouteBuilder endpoints)
     {
-        Configure(endpoints.MapPost("", async (VehicleRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation) => await mutation.Run(h, r, async ct =>
-        {
-            actor.RequireRole(Roles.Citizen);
-            await CheckCatalog(db, r, ct);
-            var v = new Vehicle
-            {
-                OwnerId = actor.Id
-            };
-            Apply(v, r);
-            db.Vehicles.Add(v);
-            return ApiReply.Created($"/api/vehiculos/{v.Id}", Response(v));
-        })).Document<VehicleResponse>("RegistrarVehiculo", "IU-01", 201));
+        Configure(endpoints.MapPost("", HandleAsync).Document<VehicleResponse>("RegistrarVehiculo", "IU-01", 201));
+    }
+    private static async Task<Results<Created<VehicleResponse>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync(VehicleRequest r, HttpContext h, Handler handler, CancellationToken ct)
+    {
+        var reply = await handler.Execute(r, h, ct);
+        return TypedResults.Created(reply.Location!, reply.Body!);
     }
 }

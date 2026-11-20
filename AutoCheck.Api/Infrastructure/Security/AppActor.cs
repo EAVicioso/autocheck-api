@@ -76,7 +76,12 @@ public sealed class SessionGuard(RequestDelegate next)
             var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId, context.RequestAborted);
             var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.AuthId == subject, context.RequestAborted);
             var now = clock.GetUtcNow();
-            if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1))
+            var logout = context.GetEndpoint()?.Metadata.GetMetadata<LogoutOperation>() is not null;
+            if (session is null || user is null || session.UserId != user.Id)
+            {
+                throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
+            }
+            if (!logout && Expired(session, user, now))
             {
                 throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
             }
@@ -100,6 +105,8 @@ public sealed class SessionGuard(RequestDelegate next)
 
         await next(context);
     }
+    private static bool Expired(AppSession session, UserAccount user, DateTimeOffset now) => session.Revoked || !user.Active || user.ArchivedAt != null || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1);
+
 }
 
 public sealed record InteractiveOperation(bool RefreshActivity);

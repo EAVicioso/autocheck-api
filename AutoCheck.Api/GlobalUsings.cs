@@ -5,3 +5,5 @@ global using AutoCheck.Api.Infrastructure.Data;
 global using AutoCheck.Api.Infrastructure.Security;
 global using FluentValidation;
 global using Microsoft.EntityFrameworkCore;
+
+global using System.Collections.Immutable;

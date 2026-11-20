@@ -43,15 +43,23 @@ public static class ApiContract
         }
     }
 
-    public static ApiException Invalid(string message) => new(400, "SOLICITUD_INVALIDA", message);
-    public static ApiException Missing() => new(404, "RECURSO_NO_ENCONTRADO", "Recurso no encontrado.");
+    public static ApiException Invalid(string message) => new(400, ApiErrorCode.SolicitudInvalida, message);
+    public static ApiException Missing() => new(404, ApiErrorCode.RecursoNoEncontrado, "Recurso no encontrado.");
+    public static ApiException Conflict(ApiErrorCode code, string message) => new(409, code, message);
     public static ApiException Conflict(string code, string message) => new(409, code, message);
-    public static ApiException Unavailable() => new(503, "SERVICIO_NO_DISPONIBLE", "Servicio temporalmente no disponible.");
+    public static ApiException Unavailable() => new(503, ApiErrorCode.ServicioNoDisponible, "Servicio temporalmente no disponible.");
     public static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
     extension(RouteHandlerBuilder route)
     {
         public RouteHandlerBuilder Document<T>(string name, string requirement, int status = 200) => route.WithName(name).WithSummary(requirement).Produces<T>(status).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(503);
+        public RouteHandlerBuilder Validated<T>() where T : class => route.AddEndpointFilter(async (context, next) =>
+        {
+            var request = context.Arguments.OfType<T>().Single();
+            var validator = context.HttpContext.RequestServices.GetRequiredService<IValidator<T>>();
+            var result = await validator.ValidateAsync(request, context.HttpContext.RequestAborted);
+            return result.IsValid ? await next(context) : TypedResults.ValidationProblem(result.ToDictionary(), extensions: new Dictionary<string, object?> { ["codigo"] = ApiErrorCode.SolicitudInvalida.Wire(), ["traceId"] = context.HttpContext.TraceIdentifier });
+        });
         public RouteHandlerBuilder Validated<T>(Action<InlineValidator<T>> rules)
             where T : class
         {

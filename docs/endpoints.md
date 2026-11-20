@@ -55,3 +55,24 @@ SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.js
 | GET | `/api/certificados/{id}/verificacion` | CU-07 / RF-CER-01 / PA-07a,b | 200, 400, 401, 403, 404, 409, 503 |
 | GET | `/api/reportes/inspecciones` | RF-DAS-01/02 / PA-08a,d | 200, 400, 401, 403, 404, 409, 503 |
 | GET | `/api/reportes/alertas` | RF-DAS-03 / PA-08b,c,d | 200, 400, 401, 403, 404, 409, 503 |
+
+## DEC-LIFECYCLE-01 additive operations
+
+GET /api/roles; GET /api/permisos; GET /api/usuarios/{id}; GET /api/usuarios/{id}/acceso; DELETE /api/usuarios/{id}?version=N; DELETE /api/vehiculos/{id}?version=N; GET /api/certificados; GET /api/auditorias/{id}.
+
+PATCH profile/access/vehicle requires version from the latest response. DELETE archives and returns 204; stale version returns 409. User and vehicle responses include version and archivadoUtc. Creation of vehicles continues to omit version. Ver [estado y evidencia](lifecycle-implementation.md) y [matriz de las 30 slices](lifecycle-slices.md).
+
+## Filtros de DEC-LIFECYCLE-01
+
+`pagina` comienza en 1 y admite hasta 500000; `tamano` 1–20. `direccion` asc/desc y `orden` usan allowlist. Respuesta de estos listados: `{items,pagina,siguienteCursor}`. Un cursor se sigue con los mismos filtros/orden/dirección, sin pagina mayor a 1; no concede autorización y cada consulta reaplica sus filtros SQL.
+
+| Listado | Filtros | Orden permitido (predeterminado) | Cursor |
+|---|---|---|---|
+| usuarios | rol, activo, incluirArchivados, nombre | id (asc), nombre | no |
+| vehículos propios | matricula, incluirArchivados | id (asc), matricula | no |
+| catálogos | padreId | nombre (asc) | no |
+| certificados propios | vehiculoId, estado PENDIENTE/EMITIDO, desdeUtc, hastaUtc | emisionUtc (desc), desempate id | sí |
+| auditorías globales | desdeUtc, hastaUtc, operacion, entidad, actorId | fechaUtc (desc), desempate id | sí |
+| historial autorizado | resultado Aprobado/Rechazado, desde/hasta locales | cierreUtc (desc), desempate id | sí |
+
+La ausencia de `incluirArchivados=true` excluye usuarios/vehículos archivados de sus listados; conserva detalle e historial autorizado. `PATCH` de perfil, acceso y vehículo requiere `version`; `DELETE` la recibe en query. El API no permite editar roles/permisos de catálogo ni modificar/borrar auditorías o certificados emitidos.

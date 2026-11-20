@@ -56,7 +56,7 @@ AutoCheck.Tests/
 
 La revisión del 12/11/2026 extrajo las 49 operaciones de negocio. Mantener los routers como composición. Un caso pequeño puede conservar todos sus tipos en un archivo; separar handler/validator solo cuando facilite lectura o prueba, sin generar cinco archivos mecánicos por endpoint. Conservar contratos y pruebas al refactorizar.
 
-- Los handlers acceden a `AutoCheckDb` directamente. No introducir repositorios genéricos ni otra Unit of Work sobre EF Core. Reutilizar `Mutation` para las operaciones transaccionales/idempotentes existentes.
+- Los casos existentes pueden acceder a `AutoCheckDb` directamente. DEC-LIFECYCLE-01 separa los handlers de los seis módulos mediante puertos `IData` exclusivos de cada slice y snapshots inmutables para probar reglas con NSubstitute; el adaptador `Data` mantiene EF, proyecciones, locks y transacción dentro del caso. No introducir repositorios genéricos ni otra Unit of Work. Reutilizar `Mutation` para las operaciones transaccionales/idempotentes existentes.
 - Mantener consultas y reglas específicas dentro del caso. Compartir solo primitivas de dominio o contratos mínimos con un propietario claro. No llamar al endpoint/handler de otra slice ni usar HTTP interno entre módulos.
 - La coordinación atómica del mismo proceso utiliza un contrato interno pequeño dentro de la misma transacción PostgreSQL. Los efectos externos utilizan outbox y consistencia eventual. No convertir operaciones que deben ser atómicas en una cadena de eventos independientes.
 - No añadir MediatR, Wolverine, un bus, otro proyecto o carpetas horizontales `Services`, `Repositories`, `Managers` o `Controllers` por seguir una plantilla. Los adaptadores técnicos compartidos sí pertenecen a Infrastructure.
@@ -74,7 +74,7 @@ Cada operación declara:
 4. FluentValidation invocado con `ValidateAsync` o filtro conectado **antes** de efectos secundarios. El escaneo de validators no ejecuta la validación. Reutilizar `Validated<T>` mientras corresponda.
 5. I/O asíncrono con `CancellationToken`; proyecciones y `AsNoTracking` en lecturas; listados con máximo de 20 elementos y filtros autorizados.
 6. Fechas persistidas UTC y reglas de día/disponibilidad en `America/Santo_Domingo`. Reloj inyectado para límites exactos.
-7. Problem Details con `codigo` y `traceId`; asistencia conserva su JSON especial. Reutilizar `ApiReply`/`ApiContract`/`ApiErrors`. No añadir un `Result<T>` paralelo por cumplir un checklist. Una migración a resultados tipados requiere una decisión coherente y pruebas del contrato; no mezclar patrones sin motivo.
+7. Problem Details con `codigo` y `traceId`; asistencia conserva su JSON especial. DEC-LIFECYCLE-01 adopta `TypedResults` y uniones HTTP en las 30 operaciones del alcance, `IExceptionHandler` central y códigos tipados compatibles con `codigo`. `Mutation.RunTyped<T>` reutiliza la misma transacción/idempotencia y conserva los DTOs sin serialización intermedia en mutaciones no idempotentes. `ApiReply` permanece en módulos fuera del alcance; no introducir un `Result<T>` paralelo. Véase [decisión y trazabilidad](../lifecycle-slices.md).
 8. Idempotencia persistida para las operaciones definidas en `docs/implementation.md`, auditoría segura y publicación de efectos después del commit.
 
 ## 5. C# 14 con criterio
@@ -178,3 +178,7 @@ Las observaciones de Engels y su estado se registran en [seguimiento del PR #1](
 `.editorconfig` fija formato y convenciones; `Directory.Build.props` ejecuta analizadores Microsoft `10-recommended` y `SonarAnalyzer.CSharp` privado durante compilación, con warnings como errores. SonarQube for Visual Studio complementa esa cobertura al abrir/editar archivos; no equivale por sí solo a analizar toda la solución. La salida SARIF opcional y el informe de revisión permiten reproducir el resultado. Las migraciones EF se identifican como código generado, se preservan sin retoques de estilo y se revisan mediante SQL, creación y upgrade reales.
 
 Usar bloques `extension` C# 14 cuando agrupen operaciones coherentes sobre el mismo receptor, como `ApiContract.Document`/`Validated`. Los DTOs siguen siendo records sencillos. Usar `LoggerMessage` para eventos estructurados; no pasar excepciones de proveedores/SQL que puedan contener datos privados. El informe vigente está en [revisión de calidad](../reviews/backend-quality-2026-11-12.md).
+
+## DEC-LIFECYCLE-01 · 14/11/2026
+
+La ampliación aprobada conserva la solución, el esquema privado y el contrato de errores. Añade ocho rutas para completar consultas y archivado lógico; el índice de negocio pasa de 49 a 57 operaciones. Los treinta casos intervenidos separan contrato, handler y transporte tipado, con puertos específicos cuando requieren I/O. Usuarios/vehículos usan `Version` y `ArchivedAt`; auditoría incorpora IP y snapshots sanitizados. Catálogos RBAC son fijos y certificados/auditorías son inmutables: no se fuerza CRUD destructivo sobre ellos. La validación HTTP real contra Supabase requiere la configuración protegida descrita en [la guía de ejecución](../lifecycle-implementation.md); las pruebas locales no sustituyen esa evidencia.

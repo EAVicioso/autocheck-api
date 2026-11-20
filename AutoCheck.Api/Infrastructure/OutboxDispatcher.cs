@@ -9,12 +9,13 @@ namespace AutoCheck.Api.Infrastructure;
 
 public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspectionArchive archive, IAppointmentNotifications notifications, IAvailabilityPublisher availability, IPaymentSandbox sandbox, PaymentWorkflow payments, CertificateIssuer certificates, PasswordResetRevocation passwordResets, ILogger<OutboxDispatcher> logger)
 {
-    public async Task<bool> DispatchOne(CancellationToken ct, string? kind = null)
+    public async Task<bool> DispatchOne(CancellationToken ct, string? kind = null, Guid? aggregateId = null)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var now = clock.GetUtcNow();
         var eventKind = kind ?? "";
-        var message = await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Completed\" IS NULL AND \"Available\" <= {now} AND ({eventKind} = '' OR \"Kind\" = {eventKind}) ORDER BY \"Available\", \"Id\" LIMIT 1 FOR UPDATE SKIP LOCKED").SingleOrDefaultAsync(ct);
+        var aggregate = aggregateId ?? Guid.Empty;
+        var message = await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Completed\" IS NULL AND \"Available\" <= {now} AND ({eventKind} = '' OR \"Kind\" = {eventKind}) AND ({aggregate} = '00000000-0000-0000-0000-000000000000'::uuid OR \"AggregateId\" = {aggregate}) ORDER BY \"Available\", \"Id\" LIMIT 1 FOR UPDATE SKIP LOCKED").SingleOrDefaultAsync(ct);
         if (message is null)
         {
             return false;

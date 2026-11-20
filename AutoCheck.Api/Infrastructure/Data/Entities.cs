@@ -3,6 +3,8 @@ namespace AutoCheck.Api.Infrastructure.Data;
 
 public sealed class UserAccount
 {
+    public long Version { get; set; } = 1;
+    public DateTimeOffset? ArchivedAt { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid AuthId { get; set; }
     public string Email { get; set; } = "";
@@ -42,6 +44,8 @@ public sealed class CatalogItem
 
 public sealed class Vehicle
 {
+    public long Version { get; set; } = 1;
+    public DateTimeOffset? ArchivedAt { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid OwnerId { get; set; }
     public string Plate { get; set; } = "";
@@ -172,6 +176,10 @@ public sealed class Certificate
 
 public sealed class AuditEvent
 {
+    [System.Text.Json.Serialization.JsonConverter(typeof(IpAddressJsonConverter))]
+    public System.Net.IPAddress? Ip { get; set; }
+    public string? Before { get; set; }
+    public string? After { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid? ActorId { get; set; }
     public DateTimeOffset At { get; set; }

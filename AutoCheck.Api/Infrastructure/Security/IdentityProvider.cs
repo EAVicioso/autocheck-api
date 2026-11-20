@@ -5,7 +5,10 @@ using System.Net.Http.Json;
 
 namespace AutoCheck.Api.Infrastructure.Security;
 
-public sealed record ProviderSession(Guid AuthId, Guid SessionId, string AccessToken, string RefreshToken, int ExpiresIn);
+public sealed record ProviderSession(Guid AuthId, Guid SessionId, string AccessToken, string RefreshToken, int ExpiresIn)
+{
+    public override string ToString() => "ProviderSession [REDACTADO]";
+}
 public sealed record ProviderRegistration(Guid AuthId, bool NeedsConfirmation);
 public interface IIdentityProvider
 {
@@ -128,7 +131,7 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
     public async Task Logout(string accessToken, CancellationToken ct)
     {
         using var response = await Send(HttpMethod.Post, "logout?scope=local", null, ct, accessToken);
-        if ((int)response.StatusCode >= 500)
+        if (!response.IsSuccessStatusCode && (int)response.StatusCode is not (401 or 403 or 404))
         {
             throw ApiContract.Unavailable();
         }

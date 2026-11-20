@@ -11,8 +11,9 @@ public static class VehicleEndpoints
     public static void MapVehicles(this IEndpointRouteBuilder routes)
     {
         routes.MapConsultarCatalogo();
-        var g = routes.MapGroup("/api/vehiculos").WithTags("Vehiculos").RequireAuthorization();
+        var g = routes.MapGroup("/api/vehiculos").WithTags("Vehiculos").RequireAuthorization("SesionActiva");
         g.MapListarVehiculos();
+        AutoCheck.Api.Features.Vehiculos.ArchivarVehiculo.ArchivarVehiculoEndpoint.MapArchivarVehiculo(g);
         g.MapObtenerVehiculo();
         g.MapRegistrarVehiculo();
         g.MapActualizarVehiculo();

@@ -5,7 +5,7 @@ public sealed class ServerClock : TimeProvider
 {
     public override DateTimeOffset GetUtcNow()
     {
-        var utc = DateTimeOffset.UtcNow;
+        var utc = TimeProvider.System.GetUtcNow();
         return new DateTimeOffset(utc.UtcTicks - utc.UtcTicks % 10, TimeSpan.Zero);
     }
 }
