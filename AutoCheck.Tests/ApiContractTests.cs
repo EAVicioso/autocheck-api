@@ -23,7 +23,7 @@ public class ApiContractTests(PublicApiFactory application) : IClassFixture<Publ
     {
         var routes = application.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
             .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/", StringComparison.Ordinal) == true).ToArray();
-        Assert.Equal(49, routes.Length);
+        Assert.Equal(57, routes.Length);
         string[] publicNames = ["RegistrarCiudadano", "IniciarSesion", "RenovarSesion", "SolicitarRecuperacion", "RestablecerContrasena", "RecibirPagoSandbox", "VerificarCertificado"];
         var anonymous = routes.Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
             .Select(endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()!.EndpointName).Order().ToArray();
@@ -83,6 +83,10 @@ public class ApiContractTests(PublicApiFactory application) : IClassFixture<Publ
         {
             Assert.True(paths.TryGetProperty(route, out _), route);
         }
+        Assert.True(paths.GetProperty("/api/auth/login").GetProperty("post").GetProperty("responses").TryGetProperty("429", out _));
+        Assert.True(paths.GetProperty("/api/certificados/{id}/verificacion").GetProperty("get").GetProperty("responses").TryGetProperty("429", out _));
+        Assert.True(paths.GetProperty("/api/usuarios/{id}").GetProperty("delete").GetProperty("responses").TryGetProperty("503", out _));
+        Assert.True(paths.GetProperty("/api/vehiculos/{id}").GetProperty("delete").GetProperty("responses").TryGetProperty("503", out _));
     }
 
     [Fact]

@@ -33,3 +33,15 @@ El harness valida estos parámetros, pero no instala ni verifica por sí mismo e
 Historial: rampa 60 segundos a 100 VU, sostenido 300 segundos, una consulta por usuario seguida de pausa de un segundo. Los umbrales se aplican únicamente al sostenido: p95 <3 s y fallos <1 %, páginas <=20 y JSON <=100 KiB. PDF y respuestas funcionales IA: 20 operaciones, cada una <10 s. Contingencias: 20 operaciones <3 s.
 
 Registrar commit, fechas, recursos, servicios reales/dobles, caché, tamaño de datos, versión k6 y evidencia de red. Los rechazos esperados se validan por las pruebas negativas y no se mezclan con esta carga positiva.
+
+## Reproducción en loopback
+
+La prueba `Rs08HistoryAndPdfWithCalibratedLinks` arranca Kestrel, prepara PostgreSQL con 100 sesiones y 10.000 inspecciones y ejecuta los perfiles de historial y PDF con k6. Usa 100 enlaces HTTP independientes con latencia por sentido y pacing de bytes. Antes de la carga mide RTT, subida y descarga por enlace. Cada VU envía su identificador al proxy local y al terminar se comprueba actividad de los 100 enlaces.
+
+```powershell
+$env:AUTOCHECK_TEST_POSTGRES = 'Host=127.0.0.1;Port=55432;Database=autocheck_tests;Username=postgres'
+$env:AUTOCHECK_RS08_K6 = 'C:\ruta\k6.exe'
+dotnet test AutoCheck.slnx -c Release --filter 'FullyQualifiedName~Rs08HistoryAndPdfWithCalibratedLinks'
+```
+
+Requiere Node.js y k6 en la estación. Los resúmenes y la calibración se guardan en `artifacts/rs08-*/`. Las identidades son sintéticas y el PDF se firma con el certificado local de la fixture. La prueba mide la aplicación en loopback con emulación HTTP. La medición de un despliegue con Supabase Auth, PostgreSQL y PFX académico utiliza el entorno de validación del equipo.

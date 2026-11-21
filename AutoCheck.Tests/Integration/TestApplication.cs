@@ -51,8 +51,9 @@ public sealed class FakeIdentity : IIdentityProvider
     public bool RejectReset { get; set; }
     public bool UncertainReset { get; set; }
     public int ResetCalls { get; private set; }
+    public bool LogoutUnavailable { get; set; }
 
-    public static string Token(Guid authId, Guid sessionId, string role = "Administrador") => new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer: "https://example.test/auth/v1", audience: "authenticated", claims: [new("sub", authId.ToString()), new("session_id", sessionId.ToString()), new("role", role)], expires: DateTime.UtcNow.AddHours(1), signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey)), SecurityAlgorithms.HmacSha256)));
+    public static string Token(Guid authId, Guid sessionId, string role = "authenticated") => new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(issuer: "https://example.test/auth/v1", audience: "authenticated", claims: [new("sub", authId.ToString()), new("session_id", sessionId.ToString()), new("role", role)], expires: TimeProvider.System.GetUtcNow().UtcDateTime.AddHours(1), signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey)), SecurityAlgorithms.HmacSha256)));
     public Task<ProviderRegistration> Register(string email, string password, CancellationToken ct)
     {
         var id = Guid.NewGuid();
@@ -114,7 +115,7 @@ public sealed class FakeIdentity : IIdentityProvider
         return account.Id;
     }
 
-    public Task Logout(string accessToken, CancellationToken ct) => Task.CompletedTask;
+    public Task Logout(string accessToken, CancellationToken ct) => LogoutUnavailable ? Task.FromException(new HttpRequestException("Synthetic Auth outage.")) : Task.CompletedTask;
 }
 
 public sealed class FakeArchive : IInspectionArchive
@@ -126,7 +127,7 @@ public sealed class FakeArchive : IInspectionArchive
     {
         if (Fail)
         {
-            throw new HttpRequestException("induced test failure");
+            throw new TimeoutException("Synthetic MongoDB server selection timeout.");
         }
 
         Documents[inspection.MongoId] = inspection.Defects!;

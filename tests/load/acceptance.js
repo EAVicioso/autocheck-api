@@ -40,6 +40,7 @@ export default function () {
   const phase = profile !== 'history' || Date.now() - exec.scenario.startTime >= 60000 ? 'sustained' : 'ramp';
   const params = { headers: { Authorization: `Bearer ${record.token}`, 'Content-Type': 'application/json' }, timeout: '10s', tags: { phase } };
   const started = Date.now();
+  if (__ENV.LOCAL_RS08_LINK === 'true') params.headers['X-RS08-Client'] = String(exec.vu.idInTest);
   let response;
   if (profile === 'history') response = http.get(`${__ENV.BASE_URL}/api/vehiculos/${record.vehiculoId}/historial?tamano=20`, params);
   else if (profile === 'pdf') response = http.post(`${__ENV.BASE_URL}/api/inspecciones/${record.inspeccionId}/certificado`, '{}', { ...params, headers: { ...params.headers, 'Idempotency-Key': `pa06-${record.inspeccionId}` } });

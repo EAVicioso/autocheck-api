@@ -12,12 +12,19 @@ public sealed class MongoInspectionArchive(MongoArchiveConnection connection) : 
 {
     public async Task Copy(Inspection inspection, CancellationToken ct)
     {
+        if (!ObjectId.TryParse(inspection.MongoId, out var id) || inspection.Defects is null)
+        {
+            throw new JsonException("Invalid inspection projection payload.");
+        }
+
+        var defects = JsonSerializer.Deserialize<List<ReportDefect>>(inspection.Defects, ApiReply.JsonOptions)
+            ?? throw new JsonException("Missing inspection defects.");
         await using var db = connection.CreateContext();
         var snapshot = new InspectionReport
         {
-            Id = ObjectId.Parse(inspection.MongoId),
+            Id = id,
             InspectionId = inspection.Id.ToString(),
-            Defects = JsonSerializer.Deserialize<List<ReportDefect>>(inspection.Defects ?? throw new InvalidOperationException("Missing closure defects."), ApiReply.JsonOptions)!,
+            Defects = defects,
             Result = inspection.Result!,
             Minor = inspection.Minor,
             Medium = inspection.Medium,

@@ -12,11 +12,19 @@ namespace AutoCheck.Tests.Integration;
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class MongoIntegrationFactAttribute : FactAttribute
 {
-    public MongoIntegrationFactAttribute()
+    public MongoIntegrationFactAttribute(bool requiresPostgres = false)
     {
-        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AUTOCHECK_TEST_MONGO")) && Environment.GetEnvironmentVariable("CI") != "true")
+        if (Environment.GetEnvironmentVariable("CI") == "true")
+        {
+            return;
+        }
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AUTOCHECK_TEST_MONGO")))
         {
             Skip = "Requires isolated loopback MongoDB: AUTOCHECK_TEST_MONGO.";
+        }
+        else if (requiresPostgres && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AUTOCHECK_TEST_POSTGRES")))
+        {
+            Skip = "Requires isolated loopback PostgreSQL: AUTOCHECK_TEST_POSTGRES.";
         }
     }
 }
@@ -27,12 +35,7 @@ public class MongoArchiveTests
     [MongoIntegrationFact]
     public async Task PA05ArchiveUpsertReusesCanonicalObjectId()
     {
-        var url = Environment.GetEnvironmentVariable("AUTOCHECK_TEST_MONGO") ?? throw new InvalidOperationException("CI must configure MongoDB.");
-        var mongoUrl = new MongoUrl(url);
-        if (mongoUrl.Server.Host is not ("127.0.0.1" or "localhost"))
-        {
-            throw new InvalidOperationException("Only isolated loopback MongoDB is allowed.");
-        }
+        var url = MongoTestConnection.Loopback();
 
         using var connection = new MongoArchiveConnection(Options.Create(new MongoDbOptions { ConnectionString = url }));
         var archive = new MongoInspectionArchive(connection);
@@ -64,5 +67,22 @@ public class MongoArchiveTests
         {
             await collection.DeleteOneAsync(filter);
         }
+    }
+}
+
+internal static class MongoTestConnection
+{
+    public static string Loopback()
+    {
+        var value = Environment.GetEnvironmentVariable("AUTOCHECK_TEST_MONGO")
+            ?? throw new InvalidOperationException("Configure the isolated MongoDB fixture.");
+        var url = new MongoUrlBuilder(value);
+        if (!value.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase) || url.Servers.Count() != 1 ||
+            url.Server.Host is not ("127.0.0.1" or "localhost"))
+        {
+            throw new InvalidOperationException("Use one loopback MongoDB server.");
+        }
+        url.DirectConnection = true;
+        return url.ToString();
     }
 }

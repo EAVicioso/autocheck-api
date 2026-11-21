@@ -1,33 +1,8 @@
-// AutoCheck / INTEC, SRS 1.1; IU-01 / PA-05. Version 1.1; history: Git.
-using AutoCheck.Api.Features.Inspecciones.Common;
-
+using Microsoft.AspNetCore.Http.HttpResults;
 namespace AutoCheck.Api.Features.Vehiculos.ConsultarCatalogo;
 
 public static class ConsultarCatalogoEndpoint
 {
-    public static void MapConsultarCatalogo(this IEndpointRouteBuilder endpoints)
-    {
-        endpoints.MapGet("/api/catalogos/{tipo}", async (string tipo, Guid? padreId, HttpContext h, AutoCheckDb db, CancellationToken ct) =>
-        {
-            if (!new[]
-            {
-                "marcas",
-                "modelos",
-                "colores",
-                "categorias",
-                DefectCatalog.CategoryType,
-                DefectCatalog.SubcategoryType
-            }.Contains(tipo))
-            {
-                throw ApiContract.Missing();
-            }
-
-            return new
-            {
-                items = await db.Catalog.AsNoTracking().Where(x => x.Type == tipo && (padreId == null || x.ParentId == padreId)).OrderBy(x => x.Name).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h)).Select(x => new { x.Id, nombre = x.Name, padreId = x.ParentId }).ToListAsync(ct)
-            };
-        }).RequireAuthorization().WithTags("Vehiculos").Document<ItemsResponse<CatalogResponse>>("ConsultarCatalogo", "IU-01");
-    }
+    public static void MapConsultarCatalogo(this IEndpointRouteBuilder endpoints) => endpoints.MapGet("/api/catalogos/{tipo}", HandleAsync).RequireAuthorization("SesionActiva").WithTags("Vehiculos").Document<PageResponse<CatalogResponse>>("ConsultarCatalogo", "IU-01");
+    private static async Task<Results<Ok<PageResponse<CatalogResponse>>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync([AsParameters] Query query, Handler handler, CancellationToken ct) => TypedResults.Ok(await handler.Execute(query, ct));
 }
-
-public sealed record CatalogResponse(Guid Id, string Nombre, Guid? PadreId);

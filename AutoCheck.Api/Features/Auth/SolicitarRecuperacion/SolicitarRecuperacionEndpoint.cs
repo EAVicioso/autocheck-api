@@ -7,12 +7,7 @@ public static class SolicitarRecuperacionEndpoint
 {
     public static void MapSolicitarRecuperacion(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/recuperacion", async (RecoveryRequest r, IIdentityProvider provider, CancellationToken ct) =>
-        {
-            await provider.Recover(ApiContract.NormalizeEmail(r.Correo), ct);
-            return Results.Accepted(value: new { mensaje = "Si la cuenta existe, recibirás instrucciones de recuperación." });
-        }).AllowAnonymous().Document<object>("SolicitarRecuperacion", "IS-04 / RS-11", 202).Validated<RecoveryRequest>(v => v.RuleFor(x => x.Correo).NotEmpty().EmailAddress().MaximumLength(254));
+        endpoints.MapPost("/recuperacion", HandleAsync).AllowAnonymous().Document<RecoveryResponse>("SolicitarRecuperacion", "IS-04 / RS-11", 202).Validated<RecoveryRequest>();
     }
+    private static async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Accepted<RecoveryResponse>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem, Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult>> HandleAsync(RecoveryRequest request, Handler handler, CancellationToken ct) => TypedResults.Accepted(uri: (string?)null, value: await handler.Execute(request, ct));
 }
-
-public sealed record RecoveryRequest(string Correo);

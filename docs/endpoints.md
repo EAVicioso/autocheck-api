@@ -59,6 +59,27 @@ SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.js
 | GET | `/api/reportes/inspecciones` | RF-DAS-01/02 / PA-08a,d | 200, 400, 401, 403, 404, 409, 503 |
 | GET | `/api/reportes/alertas` | RF-DAS-03 / PA-08b,c,d | 200, 400, 401, 403, 404, 409, 503 |
 
+## DEC-LIFECYCLE-01 additive operations
+
+GET /api/roles; GET /api/permisos; GET /api/usuarios/{id}; GET /api/usuarios/{id}/acceso; DELETE /api/usuarios/{id}?version=N; DELETE /api/vehiculos/{id}?version=N; GET /api/certificados; GET /api/auditorias/{id}.
+
+Los PATCH de perfil, acceso y vehículo aceptan `version` opcional. Cuando se envía, debe coincidir con la versión vigente. Una versión obsoleta devuelve 409. Los clientes anteriores pueden omitirla. DELETE recibe la versión en query, archiva y devuelve 204. Las respuestas de usuarios y vehículos incluyen `version` y `archivadoUtc`. Ver [estado y evidencia](lifecycle-implementation.md) y [matriz de las 30 slices](lifecycle-slices.md).
+
+## Filtros de DEC-LIFECYCLE-01
+
+`pagina` comienza en 1 y admite hasta 500000; `tamano` 1–20. `direccion` asc/desc y `orden` usan allowlist. Respuesta de estos listados: `{items,pagina,siguienteCursor}`. Un cursor se sigue con los mismos filtros/orden/dirección, sin pagina mayor a 1; no concede autorización y cada consulta reaplica sus filtros SQL.
+
+| Listado | Filtros | Orden permitido (predeterminado) | Cursor |
+|---|---|---|---|
+| usuarios | rol, activo, incluirArchivados, nombre | id (asc), nombre | no |
+| vehículos propios | matricula, incluirArchivados | id (asc), matricula | no |
+| catálogos | padreId | nombre (asc) | no |
+| certificados propios | vehiculoId, estado PENDIENTE/EMITIDO, desdeUtc, hastaUtc | emisionUtc (desc), desempate id | sí |
+| auditorías globales | desdeUtc, hastaUtc, operacion, entidad, actorId | fechaUtc (desc), desempate id | sí |
+| historial autorizado | estado ABIERTA/CERRADA, resultado Aprobado/Rechazado, desde/hasta locales de inicio | cierreUtc (desc), desempate id | sí |
+
+La ausencia de `incluirArchivados=true` excluye usuarios/vehículos archivados de sus listados; los detalles ordinarios de usuario, acceso y vehículo devuelven 404 para archivados. Se conserva el historial autorizado. Los PATCH compatibles sin `version` usan la versión que lee la transacción. Ese modo conserva el token de concurrencia de EF y carece de la comprobación contra una lectura previa del cliente. El API no permite editar roles/permisos de catálogo ni modificar/borrar auditorías o certificados emitidos.
+
 ## Contratos Sección C: CU-05/08/09/10
 
 Una sesión autenticada, incluida la de Inspector, puede consultar

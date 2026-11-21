@@ -19,6 +19,8 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
     {
         var payment = await db.Payments.SingleOrDefaultAsync(x => x.Id == e.IntentoId, ct) ?? throw ApiContract.Missing();
         await db.LockAsync("center:" + payment.CenterId, ct);
+        await db.LockAsync("user:" + payment.UserId, ct);
+        await db.LockAsync("vehicle:" + payment.VehicleId, ct);
         await db.Entry(payment).ReloadAsync(ct);
         var previous = await db.PaymentEvents.FindAsync([e.EventoId], ct);
         if (previous is not null)
@@ -38,8 +40,11 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
         }
 
         var block = await db.Blocks.SingleOrDefaultAsync(x => x.RampId == payment.RampId && x.Starts == payment.Starts, ct);
-        var valid = block is not null && block.AttemptId == payment.Id && block.State == "RETENIDO" && block.Expires > clock.GetUtcNow() && payment.State == "PENDIENTE";
-        if (e.Resultado == "APROBADO" && valid)
+        var valid = e.Resultado == "APROBADO" && block is { State: "RETENIDO" } && block.AttemptId == payment.Id && payment.State == "PENDIENTE"
+            && await db.Users.AnyAsync(x => x.Id == payment.UserId && x.Active && x.ArchivedAt == null, ct)
+            && await db.Vehicles.AnyAsync(x => x.Id == payment.VehicleId && x.OwnerId == payment.UserId && x.ArchivedAt == null, ct)
+            && block.Expires > clock.GetUtcNow();
+        if (valid)
         {
             payment.State = "APROBADO";
             block!.State = "CONFIRMADO";

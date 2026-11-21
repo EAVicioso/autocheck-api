@@ -34,6 +34,31 @@ public sealed class AppActor
     public Guid? CenterId { get; set; }
     public string[] Granted { get; set; } = [];
 
+    public async Task RevalidateUserManagement(AutoCheckDb db, TimeProvider clock, CancellationToken ct)
+    {
+        var identity = await (
+            from session in db.Sessions.AsNoTracking()
+            join user in db.Users.AsNoTracking() on session.UserId equals user.Id
+            where session.Id == SessionId && user.Id == Id
+            select new { Session = session, User = user }
+        ).SingleOrDefaultAsync(ct);
+        if (identity is null || SessionGuard.Expired(identity.Session, identity.User, clock.GetUtcNow()))
+        {
+            throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
+        }
+
+        SetAuthority(identity.User);
+        RequirePermission(Permissions.Users);
+    }
+
+    internal void SetAuthority(UserAccount user)
+    {
+        Id = user.Id;
+        Role = user.Role;
+        Granted = user.Permissions;
+        CenterId = user.CenterId;
+    }
+
     public void RequireRole(string role)
     {
         if (Role != role)
@@ -73,18 +98,26 @@ public sealed class SessionGuard(RequestDelegate next)
                 throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
             }
 
-            var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sessionId, context.RequestAborted);
-            var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.AuthId == subject, context.RequestAborted);
+            var identity = await (
+                from storedSession in db.Sessions.AsNoTracking()
+                join account in db.Users.AsNoTracking() on storedSession.UserId equals account.Id
+                where storedSession.Id == sessionId && account.AuthId == subject
+                select new { Session = storedSession, User = account }
+            ).SingleOrDefaultAsync(context.RequestAborted);
             var now = clock.GetUtcNow();
-            if (session is null || user is null || session.UserId != user.Id || session.Revoked || !user.Active || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1))
+            var logout = context.GetEndpoint()?.Metadata.GetMetadata<LogoutOperation>()?.AllowRevoked == true;
+            if (identity is null)
+            {
+                throw new ApiException(401, "SESION_INVALIDA", "Sesión inválida.");
+            }
+            var user = identity.User;
+            var session = identity.Session;
+            if (!logout && Expired(session, user, now))
             {
                 throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
             }
 
-            actor.Id = user.Id;
-            actor.Role = user.Role;
-            actor.Granted = user.Permissions;
-            actor.CenterId = user.CenterId;
+            actor.SetAuthority(user);
             actor.SessionId = sessionId;
             // Discard provider-supplied business roles. The database is the authority.
             context.User = new ClaimsPrincipal(new ClaimsIdentity([new("sub", subject.ToString()), new("session_id", sessionId.ToString()), new(ClaimTypes.Role, user.Role)], "Application"));
@@ -100,6 +133,8 @@ public sealed class SessionGuard(RequestDelegate next)
 
         await next(context);
     }
+    internal static bool Expired(AppSession session, UserAccount user, DateTimeOffset now) => session.Revoked || !user.Active || user.ArchivedAt != null || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1);
+
 }
 
 public sealed record InteractiveOperation(bool RefreshActivity);
