@@ -553,7 +553,7 @@ public partial class BusinessFlowTests : DatabaseTest
 
         var state = await WithDb(db => db.Certificates.Select(x => x.State).SingleAsync());
         Assert.Equal("EMITIDO", state);
-        Assert.True(await WithDb(db => db.Outbox.AnyAsync(x => x.Kind == "COPIA_MONGO" && x.Attempts > 0 && x.Completed == null)));
+        Assert.True(await WithDb(db => db.Outbox.AnyAsync(x => x.Kind == "COPIA_MONGO" && x.Attempts == 1 && x.Completed == null && x.FailedAt == null && x.Available > App.Clock.Now)));
         App.Archive.Fail = false;
         App.Clock.Advance(TimeSpan.FromSeconds(5));
         for (var n = 0; n < 5; n++)

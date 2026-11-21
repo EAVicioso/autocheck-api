@@ -34,6 +34,31 @@ public sealed class AppActor
     public Guid? CenterId { get; set; }
     public string[] Granted { get; set; } = [];
 
+    public async Task RevalidateUserManagement(AutoCheckDb db, TimeProvider clock, CancellationToken ct)
+    {
+        var identity = await (
+            from session in db.Sessions.AsNoTracking()
+            join user in db.Users.AsNoTracking() on session.UserId equals user.Id
+            where session.Id == SessionId && user.Id == Id
+            select new { Session = session, User = user }
+        ).SingleOrDefaultAsync(ct);
+        if (identity is null || SessionGuard.Expired(identity.Session, identity.User, clock.GetUtcNow()))
+        {
+            throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
+        }
+
+        SetAuthority(identity.User);
+        RequirePermission(Permissions.Users);
+    }
+
+    internal void SetAuthority(UserAccount user)
+    {
+        Id = user.Id;
+        Role = user.Role;
+        Granted = user.Permissions;
+        CenterId = user.CenterId;
+    }
+
     public void RequireRole(string role)
     {
         if (Role != role)
@@ -92,10 +117,7 @@ public sealed class SessionGuard(RequestDelegate next)
                 throw new ApiException(401, "SESION_EXPIRADA", "La sesión expiró o fue revocada.");
             }
 
-            actor.Id = user.Id;
-            actor.Role = user.Role;
-            actor.Granted = user.Permissions;
-            actor.CenterId = user.CenterId;
+            actor.SetAuthority(user);
             actor.SessionId = sessionId;
             // Discard provider-supplied business roles. The database is the authority.
             context.User = new ClaimsPrincipal(new ClaimsIdentity([new("sub", subject.ToString()), new("session_id", sessionId.ToString()), new(ClaimTypes.Role, user.Role)], "Application"));
@@ -111,7 +133,7 @@ public sealed class SessionGuard(RequestDelegate next)
 
         await next(context);
     }
-    private static bool Expired(AppSession session, UserAccount user, DateTimeOffset now) => session.Revoked || !user.Active || user.ArchivedAt != null || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1);
+    internal static bool Expired(AppSession session, UserAccount user, DateTimeOffset now) => session.Revoked || !user.Active || user.ArchivedAt != null || user.PasswordResetPending || session.SecurityVersion != user.SessionVersion || now - session.LastActivity >= TimeSpan.FromHours(1);
 
 }
 

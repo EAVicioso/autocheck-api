@@ -48,6 +48,7 @@ public sealed class PasswordResetProviderTests
 
     [Theory]
     [InlineData(HttpStatusCode.BadRequest, 400)]
+    [InlineData(HttpStatusCode.RequestTimeout, 503)]
     [InlineData(HttpStatusCode.TooManyRequests, 503)]
     [InlineData(HttpStatusCode.BadGateway, 503)]
     public async Task RegistrationDistinguishesInvalidInputFromProviderOutage(HttpStatusCode status, int expectedStatus)

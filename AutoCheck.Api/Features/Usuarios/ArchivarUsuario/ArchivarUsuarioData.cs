@@ -1,7 +1,7 @@
 
 namespace AutoCheck.Api.Features.Usuarios.ArchivarUsuario;
 
-public sealed class Data(AutoCheckDb db, Mutation mutation, TimeProvider clock) : IData
+public sealed class Data(AutoCheckDb db, Mutation mutation, AppActor actor, TimeProvider clock) : IData
 {
     public Task<(int Status, object? Body, string? Location)> Execute(Guid id, long version, HttpContext http, Action<Snapshot> validate, CancellationToken cancellationToken)
     {
@@ -10,6 +10,7 @@ public sealed class Data(AutoCheckDb db, Mutation mutation, TimeProvider clock) 
         {
             await db.LockAsync("admin-continuity", ct);
             await db.LockAsync("user:" + id, ct);
+            await actor.RevalidateUserManagement(db, clock, ct);
             var item = await db.Users.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw ApiContract.Missing();
             validate(new Snapshot(item.CenterId, item.Version, item.ArchivedAt, item.ArchivedAt == null && await Lifecycle.HasPending(db, id, true, clock.GetUtcNow(), ct), await Lifecycle.IsLastAdministrator(db, item, ct)));
             if (item.ArchivedAt is not null)

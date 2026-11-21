@@ -127,7 +127,7 @@ public sealed class FakeArchive : IInspectionArchive
     {
         if (Fail)
         {
-            throw new HttpRequestException("induced test failure");
+            throw new TimeoutException("Synthetic MongoDB server selection timeout.");
         }
 
         Documents[inspection.MongoId] = inspection.Defects!;

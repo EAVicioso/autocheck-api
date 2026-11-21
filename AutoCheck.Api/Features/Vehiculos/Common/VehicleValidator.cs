@@ -1,8 +1,10 @@
 namespace AutoCheck.Api.Features.Vehiculos.Common;
 
-public sealed class VehicleValidator : AbstractValidator<VehicleRequest>
+public sealed class VehicleValidator : VehicleValidator<VehicleRequest>;
+
+public abstract class VehicleValidator<T> : AbstractValidator<T> where T : VehicleRequest
 {
-    public VehicleValidator()
+    protected VehicleValidator()
     {
         RuleFor(x => x.Matricula).NotEmpty().MaximumLength(20).Matches("^[A-Za-z0-9-]+$");
         RuleFor(x => x.Vin).NotEmpty().Length(17).Matches("^[A-HJ-NPR-Za-hj-npr-z0-9]+$");

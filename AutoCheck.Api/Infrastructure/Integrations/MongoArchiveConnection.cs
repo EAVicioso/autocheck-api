@@ -21,12 +21,22 @@ public sealed class MongoArchiveConnection(IOptions<MongoDbOptions> options) : I
         }
 
         var settings = MongoClientSettings.FromConnectionString(connection);
-        var hasRemoteHost = settings.Servers.Any(server => server.Host is not ("localhost" or "127.0.0.1" or "::1"));
-        if (settings.AllowInsecureTls || (hasRemoteHost && !settings.UseTls) || !settings.WriteConcern.IsAcknowledged)
+        if (settings.AllowInsecureTls || !settings.WriteConcern.IsAcknowledged)
         {
             throw ApiContract.Unavailable();
         }
 
+        if (!settings.UseTls)
+        {
+            var hosts = settings.Servers.ToArray();
+            if (hosts.Length != 1 || hosts[0].Host is not ("localhost" or "127.0.0.1" or "::1"))
+            {
+                throw ApiContract.Unavailable();
+            }
+            settings.DirectConnection = true;
+        }
+
+        settings.WriteConcern = WriteConcern.WMajority;
         settings.ServerSelectionTimeout = TimeSpan.FromSeconds(2);
         settings.ConnectTimeout = TimeSpan.FromSeconds(2);
         settings.SocketTimeout = TimeSpan.FromSeconds(3);

@@ -104,6 +104,10 @@ La ejecución local RS-08 usó k6 2.4.0, Kestrel y PostgreSQL 17.7 con 10.000 in
 
 Cada enlace HTTP se configuró a 150 ms de RTT, 1,6 Mbps de bajada, 750 kbps de subida y 0 % de pérdida inducida. Las sondas observaron 168–184 ms, 1,55–1,60 Mbps y 708–752 kbps, respectivamente. El equipo usó Windows con 8 CPU lógicas y 7,8 GiB de RAM. Las 59 muestras del proceso conjunto de pruebas y API registraron un pico de 202,1 MiB. Evidencia en `artifacts/rs08-54e69a45/` y `artifacts/rs08-loopback.trx`. Los resultados corresponden a loopback, con identidad sintética y firma de la fixture. La validación en un despliegue con los proveedores y el certificado académico del equipo sigue pendiente.
 
+## Despliegue gradual de las correcciones del PR #13
+
+Aplicar las migraciones aditivas antes de iniciar la actualización. PostgreSQL incrementa la versión cuando una réplica anterior escribe sin incluirla. Durante la coexistencia mantener las rutas DELETE de archivado fuera del tráfico hasta retirar las réplicas y workers anteriores, que desconocen los filtros de archivado. El outbox conserva los fallos permanentes con `FailedAt`, `FailureCode` y el identificador original. Los timeouts vuelven a la cola con backoff.
+
 ## Actualización del PR #13
 
 - Perfil, acceso y vehículo aceptan las solicitudes PATCH de main que omiten `version`. Cuando el cliente envía una versión positiva, una versión obsoleta devuelve 409. Los tres casos tienen cobertura HTTP sobre PostgreSQL. El archivado conserva la versión en query.

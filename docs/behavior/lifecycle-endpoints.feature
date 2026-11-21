@@ -78,6 +78,7 @@ Feature: DEC-LIFECYCLE-01 contratos de los seis módulos
     Given un administrador con acceso al centro del usuario
     When solicita GET /api/usuarios/{id}
     Then devuelve el perfil administrativo sin credenciales
+    But si el usuario está archivado responde 404
 
   @U05 @CU-11
   Scenario: U05 Usuarios/ArchivarUsuario
@@ -102,6 +103,7 @@ Feature: DEC-LIFECYCLE-01 contratos de los seis módulos
     Given un administrador autorizado sobre el usuario
     When solicita GET /api/usuarios/{id}/acceso
     Then devuelve rol, permisos, centro, activo y version actuales
+    But si el usuario está archivado responde 404
 
   @P04 @CU-11
   Scenario: P04 Permisos/CambiarAcceso
@@ -132,6 +134,7 @@ Feature: DEC-LIFECYCLE-01 contratos de los seis módulos
     Given un vehículo existente dentro del alcance del actor
     When solicita GET /api/vehiculos/{id}
     Then devuelve una proyección del vehículo sin entidades EF
+    But si el vehículo está archivado responde 404 y conserva el historial autorizado
 
   @V05 @IU-01
   Scenario: V05 Vehiculos/ActualizarVehiculo

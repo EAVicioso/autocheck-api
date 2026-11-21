@@ -2,6 +2,8 @@
 using AutoCheck.Api.Features.Certificados;
 using AutoCheck.Api.Features.Certificados.Common;
 using AutoCheck.Api.Features.Pagos;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using AutoCheck.Api.Features.Reportes;
 using AutoCheck.Api.Features.Reportes.Common;
 
@@ -15,7 +17,7 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
         var now = clock.GetUtcNow();
         var eventKind = kind ?? "";
         var aggregate = aggregateId ?? Guid.Empty;
-        var message = await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Completed\" IS NULL AND \"Available\" <= {now} AND ({eventKind} = '' OR \"Kind\" = {eventKind}) AND ({aggregate} = '00000000-0000-0000-0000-000000000000'::uuid OR \"AggregateId\" = {aggregate}) ORDER BY \"Available\", \"Id\" LIMIT 1 FOR UPDATE SKIP LOCKED").SingleOrDefaultAsync(ct);
+        var message = await db.Outbox.FromSqlInterpolated($"SELECT * FROM autocheck.\"OutboxMessage\" WHERE \"Completed\" IS NULL AND \"FailedAt\" IS NULL AND \"Available\" <= {now} AND ({eventKind} = '' OR \"Kind\" = {eventKind}) AND ({aggregate} = '00000000-0000-0000-0000-000000000000'::uuid OR \"AggregateId\" = {aggregate}) ORDER BY \"Available\", \"Id\" LIMIT 1 FOR UPDATE SKIP LOCKED").SingleOrDefaultAsync(ct);
         if (message is null)
         {
             return false;
@@ -58,12 +60,18 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
                 case "DISPONIBILIDAD":
                     using (var payload = JsonDocument.Parse(message.Payload))
                     {
-                        await availability.Publish(payload.RootElement.GetProperty("centroId").GetGuid(), ct);
+                        var root = payload.RootElement;
+                        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("centroId", out var center)
+                            || center.ValueKind != JsonValueKind.String || !center.TryGetGuid(out var centerId) || centerId == Guid.Empty)
+                        {
+                            throw new JsonException("Invalid availability payload.");
+                        }
+                        await availability.Publish(centerId, ct);
                     }
 
                     break;
                 default:
-                    throw new InvalidOperationException("Unknown outbox event type.");
+                    throw new JsonException("Unknown outbox event type.");
             }
 
             message.Completed = clock.GetUtcNow();
@@ -78,26 +86,50 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
         }
         catch (Exception ex)
         {
-            // Roll back all tracked side effects before recording the retry in a separate transaction.
-            var messageId = message.Id;
-            var previousAttempts = message.Attempts;
-            var previousAvailability = message.Available;
-            var nextAttempts = previousAttempts + 1;
+            // Roll back the delivery before making the conditional failure update.
             await tx.RollbackAsync(ct);
             db.ChangeTracker.Clear();
-            // A different worker may have completed or rescheduled the message after the rollback.
-            var retryAt = clock.GetUtcNow().AddSeconds(Math.Min(300, Math.Pow(2, Math.Min(nextAttempts, 8))));
-            var rescheduled = await db.Outbox.Where(x => x.Id == messageId && x.Completed == null
-                && x.Attempts == previousAttempts && x.Available == previousAvailability)
-                .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.Attempts, nextAttempts)
-                    .SetProperty(x => x.Available, retryAt), ct);
-            if (rescheduled > 0)
-            {
-                ApiLog.DeliveryRetry(logger, messageId, ex.GetType().Name);
-            }
+            await RecordFailure(message, ex, ct);
             return true;
         }
     }
+
+    private async Task RecordFailure(OutboxMessage message, Exception exception, CancellationToken ct)
+    {
+        var nextAttempts = message.Attempts + 1;
+        var pending = db.Outbox.Where(x => x.Id == message.Id && x.Completed == null && x.FailedAt == null
+            && x.Attempts == message.Attempts && x.Available == message.Available);
+        var failedAt = clock.GetUtcNow();
+        var failureCode = PermanentFailure(exception);
+        if (failureCode is not null)
+        {
+            // PostgreSQL infinity keeps older workers from selecting a dead letter during rollout.
+            var failed = await pending.ExecuteUpdateAsync(updates => updates.SetProperty(x => x.Attempts, nextAttempts)
+                .SetProperty(x => x.Available, DateTimeOffset.MaxValue)
+                .SetProperty(x => x.FailedAt, failedAt).SetProperty(x => x.FailureCode, failureCode), ct);
+            if (failed > 0)
+            {
+                ApiLog.DeliveryFailed(logger, message.Id, failureCode);
+            }
+            return;
+        }
+
+        var retryAt = failedAt.AddSeconds(Math.Pow(2, Math.Min(nextAttempts, 8)));
+        var rescheduled = await pending.ExecuteUpdateAsync(updates => updates.SetProperty(x => x.Attempts, nextAttempts)
+            .SetProperty(x => x.Available, retryAt), ct);
+        if (rescheduled > 0)
+        {
+            ApiLog.DeliveryRetry(logger, message.Id, exception.GetType().Name);
+        }
+    }
+
+    private static string? PermanentFailure(Exception exception) => exception switch
+    {
+        JsonException => "PAYLOAD_INVALIDO",
+        BsonSerializationException => "BSON_INVALIDO",
+        MongoWriteException { WriteError.Code: 121 } => "ESQUEMA_MONGO_INVALIDO",
+        _ => null
+    };
 }
 
 public sealed class BackgroundDelivery(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<BackgroundDelivery> logger) : BackgroundService

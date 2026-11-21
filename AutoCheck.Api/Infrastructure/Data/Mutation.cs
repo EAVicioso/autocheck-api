@@ -84,7 +84,9 @@ public sealed class Mutation(AutoCheckDb db, AppActor actor, TimeProvider clock)
             ActorId = actor.Id == Guid.Empty ? null : actor.Id,
             At = clock.GetUtcNow(),
             Operation = auditName,
-            Entity = http.Request.Path,
+            Entity = auditName == "CAMBIO_ACCESO" && changed?.Entity is UserAccount user
+                ? user.Id.ToString()
+                : http.Request.Path,
             Outcome = "CONFIRMADO",
             Correlation = http.TraceIdentifier,
             Ip = http.Connection.RemoteIpAddress,

@@ -78,7 +78,7 @@ Los PATCH de perfil, acceso y vehículo aceptan `version` opcional. Cuando se en
 | auditorías globales | desdeUtc, hastaUtc, operacion, entidad, actorId | fechaUtc (desc), desempate id | sí |
 | historial autorizado | estado ABIERTA/CERRADA, resultado Aprobado/Rechazado, desde/hasta locales de inicio | cierreUtc (desc), desempate id | sí |
 
-La ausencia de `incluirArchivados=true` excluye usuarios/vehículos archivados de sus listados; conserva detalle e historial autorizado. Los PATCH compatibles sin `version` usan la versión que lee la transacción. Ese modo conserva el token de concurrencia de EF y carece de la comprobación contra una lectura previa del cliente. El API no permite editar roles/permisos de catálogo ni modificar/borrar auditorías o certificados emitidos.
+La ausencia de `incluirArchivados=true` excluye usuarios/vehículos archivados de sus listados; los detalles ordinarios de usuario, acceso y vehículo devuelven 404 para archivados. Se conserva el historial autorizado. Los PATCH compatibles sin `version` usan la versión que lee la transacción. Ese modo conserva el token de concurrencia de EF y carece de la comprobación contra una lectura previa del cliente. El API no permite editar roles/permisos de catálogo ni modificar/borrar auditorías o certificados emitidos.
 
 ## Contratos Sección C: CU-05/08/09/10
 

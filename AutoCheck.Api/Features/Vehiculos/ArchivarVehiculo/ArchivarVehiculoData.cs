@@ -11,6 +11,10 @@ public sealed class Data(AutoCheckDb db, AppActor actor, Mutation mutation, Time
 
             await db.LockAsync("user:" + actor.Id, ct);
             await db.LockAsync("vehicle:" + id, ct);
+            if (!await db.Users.AnyAsync(x => x.Id == actor.Id && x.Role == Roles.Citizen && x.Active && x.ArchivedAt == null, ct))
+            {
+                AppActor.Deny();
+            }
             var item = await db.Vehicles.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw ApiContract.Missing();
             validate(new Snapshot(item.OwnerId, item.Version, item.ArchivedAt, item.ArchivedAt == null && await Lifecycle.HasPending(db, id, false, clock.GetUtcNow(), ct)));
             if (item.ArchivedAt is not null)

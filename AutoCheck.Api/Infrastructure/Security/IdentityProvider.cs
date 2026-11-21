@@ -138,7 +138,7 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
 
     private static void EnsureAvailable(HttpStatusCode status)
     {
-        if ((int)status >= 500 || status == HttpStatusCode.TooManyRequests)
+        if ((int)status >= 500 || status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests)
         {
             throw ApiContract.Unavailable();
         }

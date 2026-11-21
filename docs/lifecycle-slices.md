@@ -8,6 +8,8 @@ BDD: leer el escenario identificado y sus fronteras comunes. CDD: fijar los reco
 
 Contexto común C0 (cargar en una sesión limpia): `AGENTS.md`, `.agents/agents.md`, `docs/architecture/AI_Backend_Architecture_Guidelines.md`, `docs/implementation.md`, este documento, `AutoCheck.Api/Infrastructure/Data/AutoCheckDb.cs`, `Entities.cs`, `Infrastructure/Http/ApiContract.cs`, `ApiException.cs`, `ApiErrorCode.cs`, `Infrastructure/Security/AppActor.cs`. Añadir únicamente la carpeta de slice indicada y los archivos mínimos adicionales de cada tarea. No cargar carpetas de otros módulos salvo la dependencia explícita.
 
+Los detalles ordinarios U04, P03 y V04 responden 404 para recursos archivados. La auditoría y el historial conservan el acceso autorizado a eventos y cierres inmutables.
+
 Fronteras comunes: 400 para JSON/validación y filtros; 401 para identidad/sesión inválida; 403 para permiso/propiedad/centro denegado; 404 para recurso inexistente; 409 para versión/unicidad/estado/idempotencia en conflicto. No se introduce 422 porque el contrato existente usa 400. No se inventan 404/409 para catálogos o listados sin recurso mutable. El validador se ejecuta antes de efectos. A01: filtros SQL + política; A02/A07: no persistir ni registrar secretos, JWT estricto; A03: EF/SQL parametrizado; A04/A05: límite 128 KiB, allowlist, rate limit/CORS/errores seguros; A08: hashes y firma de PDF; A09: mutaciones y fallos críticos auditados. La suite cubre además dependencias y configuración segura; no se afirma que una etiqueta OWASP equivalga a un pentest completo.
 
 ## Matriz HTTP

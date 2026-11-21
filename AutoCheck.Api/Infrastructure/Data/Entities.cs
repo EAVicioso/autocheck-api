@@ -196,6 +196,8 @@ public sealed class OutboxMessage
     public Guid AggregateId { get; set; }
     public DateTimeOffset Available { get; set; }
     public DateTimeOffset? Completed { get; set; }
+    public DateTimeOffset? FailedAt { get; set; }
+    public string? FailureCode { get; set; }
     public int Attempts { get; set; }
     public string Payload { get; set; } = "{}";
 }
