@@ -139,9 +139,9 @@
       },
       "QRCoder": {
         "type": "Direct",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "6R3hQkayihGIDjp3F1nLRDBWG+nqahGyOY2+fH4Rll16Vad67oaUUfHkOiMWKiJFnGh+PIGDfUos+0R9m54O1g==",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "5hLj/PNkFnIcSk9VOJzhBgspByhSkBtF0tAJpWyLOXqZ0c2WE2H8YTWEEOArLkjwXZh5LHfpoqjDwomrJq0mGA==",
         "dependencies": {
           "System.Drawing.Common": "6.0.0"
         }
