@@ -207,7 +207,10 @@ public partial class BusinessFlowTests : DatabaseTest
     }
 
     private Task<HttpResponseMessage> Start(string? key = null) => Send(Citizen, HttpMethod.Post, "/api/pagos/intentos", new StartPaymentRequest(VehicleId, CenterId, RampId, Starts, DemoraSegundos: 600), key ?? Guid.NewGuid().ToString());
-    private async Task<JsonElement> Webhook(Guid attempt, string outcome = "APROBADO", string? eventId = null)
+    private async Task<JsonElement> Webhook(Guid attempt, string outcome = "APROBADO", string? eventId = null) =>
+        await Json(await SendWebhook(attempt, outcome, eventId));
+
+    private async Task<HttpResponseMessage> SendWebhook(Guid attempt, string outcome, string? eventId)
     {
         var body = JsonSerializer.Serialize(new SandboxEvent(eventId ?? Guid.NewGuid().ToString(), attempt, outcome), ApiReply.JsonOptions);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/pagos/webhook")
@@ -215,7 +218,7 @@ public partial class BusinessFlowTests : DatabaseTest
             Content = new StringContent(body, Encoding.UTF8, "application/json")
         };
         request.Headers.Add("X-Sandbox-Signature", Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes("sandbox-for-isolated-tests-only-0123456789"), Encoding.UTF8.GetBytes(body))));
-        return await Json(await Citizen.SendAsync(request));
+        return await Citizen.SendAsync(request);
     }
 
     [IntegrationFact]

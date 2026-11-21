@@ -17,13 +17,15 @@ public static class ConfigurarHorariosEndpoint
                 throw ApiContract.Missing();
             }
 
-            if (await HasCommitments(db, id, null, clock.GetUtcNow(), ct))
+            var now = clock.GetUtcNow();
+            if (await HasCommitments(db, id, null, now, ct))
             {
                 throw ApiContract.Conflict("HORARIO_CON_COMPROMISOS", "Resuelve las citas y retenciones antes de cambiar el horario.");
             }
 
             await db.Schedules.Where(x => x.CenterId == id).ExecuteDeleteAsync(ct);
             db.Schedules.AddRange(r.Horarios.Select(x => new CenterSchedule { CenterId = id, Day = x.Dia, Opens = x.AperturaMinutos, Closes = x.CierreMinutos }));
+            QueueAvailability(db, id, now);
             return ApiReply.Ok(r);
         })).Interactive().Document<ScheduleRequest>("ConfigurarHorarios", "RAE-01 / PA-12b,c").Validated<ScheduleRequest>(v =>
         {

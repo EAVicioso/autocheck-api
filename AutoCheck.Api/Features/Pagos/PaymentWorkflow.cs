@@ -18,6 +18,7 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
     public async Task<PaymentStateResponse> Apply(SandboxEvent e, string correlation, CancellationToken ct)
     {
         var payment = await db.Payments.SingleOrDefaultAsync(x => x.Id == e.IntentoId, ct) ?? throw ApiContract.Missing();
+        await db.LockAsync("payment-event:" + e.EventoId, ct);
         await db.LockAsync("center:" + payment.CenterId, ct);
         await db.LockAsync("user:" + payment.UserId, ct);
         await db.LockAsync("vehicle:" + payment.VehicleId, ct);
@@ -43,7 +44,7 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
         var valid = e.Resultado == "APROBADO" && block is { State: "RETENIDO" } && block.AttemptId == payment.Id && payment.State == "PENDIENTE"
             && await db.Users.AnyAsync(x => x.Id == payment.UserId && x.Active && x.ArchivedAt == null, ct)
             && await db.Vehicles.AnyAsync(x => x.Id == payment.VehicleId && x.OwnerId == payment.UserId && x.ArchivedAt == null, ct)
-            && block.Expires > clock.GetUtcNow();
+            && block.Expires > clock.GetUtcNow() && block.Starts > clock.GetUtcNow();
         if (valid)
         {
             payment.State = "APROBADO";

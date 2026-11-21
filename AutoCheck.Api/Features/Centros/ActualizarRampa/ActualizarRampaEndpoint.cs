@@ -13,13 +13,19 @@ public static class ActualizarRampaEndpoint
             actor.RequireCenter(id);
             await db.LockAsync("center:" + id, ct);
             var ramp = await db.Ramps.SingleOrDefaultAsync(x => x.Id == rampaId && x.CenterId == id, ct) ?? throw ApiContract.Missing();
-            if (!r.Activa && await HasCommitments(db, id, rampaId, clock.GetUtcNow(), ct))
+            var now = clock.GetUtcNow();
+            if (!r.Activa && await HasCommitments(db, id, rampaId, now, ct))
             {
                 throw ApiContract.Conflict("RAMPA_CON_COMPROMISOS", "Resuelve las citas y retenciones antes de desactivar la rampa.");
             }
 
             ramp.Name = r.Nombre.Trim();
-            ramp.Active = r.Activa;
+            if (ramp.Active != r.Activa)
+            {
+                ramp.Active = r.Activa;
+                QueueAvailability(db, id, now);
+            }
+
             return ApiReply.Ok(new RampResponse(ramp.Id, id, ramp.Name, ramp.Active));
         })).Document<RampResponse>("ActualizarRampa", "PA-12b,c"));
     }
