@@ -13,14 +13,20 @@ public static class ActualizarCentroEndpoint
             actor.RequireCenter(id);
             await db.LockAsync("center:" + id, ct);
             var c = await db.Centers.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw ApiContract.Missing();
-            if (!r.Activo && await HasCommitments(db, id, null, clock.GetUtcNow(), ct))
+            var now = clock.GetUtcNow();
+            if (!r.Activo && await HasCommitments(db, id, null, now, ct))
             {
                 throw ApiContract.Conflict("CENTRO_CON_COMPROMISOS", "Resuelve las citas y retenciones antes de desactivar el centro.");
             }
 
             c.Name = r.Nombre.Trim();
             c.Address = r.Direccion.Trim();
-            c.Active = r.Activo;
+            if (c.Active != r.Activo)
+            {
+                c.Active = r.Activo;
+                QueueAvailability(db, id, now);
+            }
+
             return ApiReply.Ok(Response(c));
         })).Document<CenterResponse>("ActualizarCentro", "PA-12b,c"));
     }
