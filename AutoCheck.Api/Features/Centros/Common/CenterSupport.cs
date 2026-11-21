@@ -7,6 +7,14 @@ public static class CenterSupport
 {
     public static CenterResponse Response(Center c) => new(c.Id, c.Name, c.Address, c.Active);
     public static async Task<bool> HasCommitments(AutoCheckDb db, Guid center, Guid? ramp, DateTimeOffset now, CancellationToken ct) => await db.Appointments.AnyAsync(x => x.CenterId == center && (ramp == null || x.RampId == ramp) && (x.State == "EN_INSPECCION" || (x.State == "CONFIRMADA" && x.Starts > now)), ct) || await db.Blocks.AnyAsync(x => x.State == "RETENIDO" && x.Expires > now && (ramp == null || x.RampId == ramp) && db.Ramps.Any(r => r.Id == x.RampId && r.CenterId == center), ct);
+    internal static void QueueAvailability(AutoCheckDb db, Guid centerId, DateTimeOffset now) => db.Outbox.Add(new()
+    {
+        Kind = "DISPONIBILIDAD",
+        AggregateId = Guid.NewGuid(),
+        Available = now,
+        Payload = ApiReply.Serialize(new { centroId = centerId })
+    });
+
     public static void CenterValidation(RouteHandlerBuilder b) => b.Interactive().Validated<CenterRequest>(v =>
     {
         v.RuleFor(x => x.Nombre).NotEmpty().MaximumLength(120);

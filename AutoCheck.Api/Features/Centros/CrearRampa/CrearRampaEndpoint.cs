@@ -7,7 +7,7 @@ public static class CrearRampaEndpoint
 {
     public static void MapCrearRampa(this IEndpointRouteBuilder endpoints)
     {
-        RampValidation(endpoints.MapPost("/{id:guid}/rampas", async (Guid id, RampRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation) => await mutation.Run(h, r, async ct =>
+        RampValidation(endpoints.MapPost("/{id:guid}/rampas", async (Guid id, RampRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
         {
             actor.RequirePermission(Permissions.Centers);
             actor.RequireCenter(id);
@@ -24,6 +24,11 @@ public static class CrearRampaEndpoint
                 Active = r.Activa
             };
             db.Ramps.Add(ramp);
+            if (ramp.Active)
+            {
+                QueueAvailability(db, id, clock.GetUtcNow());
+            }
+
             return ApiReply.Created($"/api/centros/{id}", new RampResponse(ramp.Id, id, ramp.Name, ramp.Active));
         })).Document<RampResponse>("CrearRampa", "CU-12 / PA-12a", 201));
     }

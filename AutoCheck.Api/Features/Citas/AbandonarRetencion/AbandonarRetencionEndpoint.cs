@@ -26,6 +26,7 @@ public static class AbandonarRetencionEndpoint
             if (b?.State == "RETENIDO")
             {
                 db.Blocks.Remove(b);
+                db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = p.CenterId }) });
             }
 
             if (p.State == "PENDIENTE")
@@ -33,7 +34,6 @@ public static class AbandonarRetencionEndpoint
                 p.State = "ABANDONADO";
             }
 
-            db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = p.CenterId }) });
             return ApiReply.Empty();
         })).Interactive().Document<object>("AbandonarRetencion", "RF-CIT-02 / CU-03", 204);
     }
