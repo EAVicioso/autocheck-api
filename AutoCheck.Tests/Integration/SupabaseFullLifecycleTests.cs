@@ -118,7 +118,12 @@ public sealed class SupabaseFullLifecycleTests
     }
     private static async Task ArchiveResources(FixtureUser admin, Guid citizen, Guid inspector)
     {
-        _ = await SupabaseScenario.Send(admin.Client, HttpMethod.Delete, $"/api/usuarios/{citizen}?version=2", status: HttpStatusCode.NoContent);
-        _ = await SupabaseScenario.Send(admin.Client, HttpMethod.Delete, $"/api/usuarios/{inspector}?version=2", status: HttpStatusCode.NoContent);
+        foreach (var id in new[] { citizen, inspector })
+        {
+            var path = $"/api/usuarios/{id}";
+            var user = await SupabaseScenario.Send(admin.Client, HttpMethod.Get, path);
+            var version = user.GetProperty("version").GetInt64();
+            _ = await SupabaseScenario.Send(admin.Client, HttpMethod.Delete, $"{path}?version={version}", status: HttpStatusCode.NoContent);
+        }
     }
 }

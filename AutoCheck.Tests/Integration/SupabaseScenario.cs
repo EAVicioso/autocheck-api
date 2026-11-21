@@ -61,6 +61,7 @@ public sealed class SupabaseScenario : IAsyncDisposable
         authPublic.BaseAddress = authAdmin.BaseAddress;
         authPublic.DefaultRequestHeaders.Add("apikey", publishable);
         app = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment("Development").ConfigureAppConfiguration((_, c) => c.AddConfiguration(config).AddInMemoryCollection(new Dictionary<string, string?> { ["Workers:Enabled"] = "false" })));
+        app.ClientOptions.AllowAutoRedirect = false;
         app.UseKestrel(0);
     }
     public static void AssertTarget(IConfiguration config)
@@ -104,7 +105,7 @@ public sealed class SupabaseScenario : IAsyncDisposable
     private static string Password() => Convert.ToHexString(RandomNumberGenerator.GetBytes(24)) + "aB1!";
     public HttpClient Client()
     {
-        var client = app.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var client = app.CreateClient();
         clients.Add(client);
         return client;
     }
