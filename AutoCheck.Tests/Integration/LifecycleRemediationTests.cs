@@ -18,6 +18,7 @@ namespace AutoCheck.Tests.Integration;
 [Trait("Category", "Integration")]
 public sealed class LifecycleRemediationTests : DatabaseTest
 {
+    private static readonly string[] AggregateDeliveryKinds = ["COPIA_MONGO", "PAGO_SANDBOX", "CITA_CONFIRMADA"];
     [IntegrationFact]
     public async Task LegacySqlAdvancesVersionsWithoutDoubleIncrementingExplicitWrites()
     {
@@ -88,7 +89,13 @@ public sealed class LifecycleRemediationTests : DatabaseTest
     [IntegrationFact]
     public Task OutboxConfirmationSerializesWithVehicleArchive() => AssertPaymentSerialization(webhook: false);
 
-    private async Task AssertPaymentSerialization(bool webhook)
+    [IntegrationFact]
+    public Task UserArchiveAtExpirationWinsAgainstWebhook() => AssertPaymentSerialization(webhook: true, archiveFirst: true);
+
+    [IntegrationFact]
+    public Task VehicleArchiveAtExpirationWinsAgainstOutbox() => AssertPaymentSerialization(webhook: false, archiveFirst: true);
+
+    private async Task AssertPaymentSerialization(bool webhook, bool archiveFirst = false)
     {
         Citizen.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString());
         using var hold = await Citizen.PostAsJsonAsync("/api/pagos/intentos", new { vehiculoId = VehicleId, centroId = CenterId, rampaId = RampId, inicioUtc = Starts });
@@ -98,20 +105,54 @@ public sealed class LifecycleRemediationTests : DatabaseTest
         {
             await using var tx = await db.Database.BeginTransactionAsync();
             await db.LockAsync("user:" + CitizenId, default);
-            var confirmation = webhook ? ConfirmWebhook(attempt) : Dispatch("PAGO_SANDBOX", attempt);
+            Task<bool> Confirm() => webhook ? ConfirmWebhook(attempt) : Dispatch("PAGO_SANDBOX", attempt);
+
+            var pending = archiveFirst ? ArchivePaymentResource(webhook) : null;
+            var confirmation = archiveFirst ? null : Confirm();
             await WaitForAdvisoryWaiters(1);
-            var pending = webhook
-                ? Administrator.DeleteAsync($"/api/usuarios/{CitizenId}?version=1")
-                : Citizen.DeleteAsync($"/api/vehiculos/{VehicleId}?version=1");
+            pending ??= ArchivePaymentResource(webhook);
+            confirmation ??= Confirm();
             await WaitForAdvisoryWaiters(2);
+            if (archiveFirst)
+            {
+                App.Clock.Advance(TimeSpan.FromSeconds(300));
+            }
             await tx.CommitAsync();
             Assert.True(await confirmation);
             return await pending;
         });
+        if (archiveFirst)
+        {
+            await AssertArchiveWins(archive, attempt, webhook);
+            return;
+        }
+
         Assert.Equal(HttpStatusCode.Conflict, archive.StatusCode);
         Assert.True(await WithDb(db => db.Appointments.AnyAsync(x => x.AttemptId == attempt && x.State == "CONFIRMADA")));
         Assert.True(await WithDb(db => db.Users.AnyAsync(x => x.Id == CitizenId && x.ArchivedAt == null)));
         Assert.True(await WithDb(db => db.Vehicles.AnyAsync(x => x.Id == VehicleId && x.ArchivedAt == null)));
+    }
+
+    private Task<HttpResponseMessage> ArchivePaymentResource(bool archiveUser) => archiveUser
+        ? Administrator.DeleteAsync($"/api/usuarios/{CitizenId}?version=1")
+        : Citizen.DeleteAsync($"/api/vehiculos/{VehicleId}?version=1");
+
+    private async Task AssertArchiveWins(HttpResponseMessage archive, Guid attempt, bool webhook)
+    {
+        Assert.Equal(HttpStatusCode.NoContent, archive.StatusCode);
+        Assert.False(await WithDb(db => db.Appointments.AnyAsync(x => x.AttemptId == attempt)));
+        var reverse = await WithDb(db => db.Payments.Where(x => x.Id == attempt && x.State == "REVERTIDO").Select(x => x.ReversalId).SingleAsync());
+        Assert.NotNull(reverse);
+        if (webhook)
+        {
+            Assert.True(await ConfirmWebhook(attempt));
+        }
+        else
+        {
+            Assert.False(await Dispatch("PAGO_SANDBOX", attempt));
+        }
+        Assert.Equal(reverse, await WithDb(db => db.Payments.Where(x => x.Id == attempt).Select(x => x.ReversalId).SingleAsync()));
+        Assert.False(await WithDb(db => db.Appointments.AnyAsync(x => x.AttemptId == attempt)));
     }
 
     [IntegrationFact]
@@ -170,6 +211,34 @@ public sealed class LifecycleRemediationTests : DatabaseTest
         Assert.NotNull(failed.FailedAt);
         Assert.Null(failed.Completed);
         Assert.Equal(1, failed.Attempts);
+    }
+
+    [IntegrationFact]
+    public async Task MissingAggregatesAreDeadLetteredWithoutMarkingDeliveryComplete()
+    {
+        var messages = AggregateDeliveryKinds
+            .Select(kind => new OutboxMessage { Kind = kind, AggregateId = Guid.NewGuid(), Available = App.Clock.Now })
+            .ToArray();
+        await WithDb(async db =>
+        {
+            db.Outbox.AddRange(messages);
+            return await db.SaveChangesAsync();
+        });
+
+        foreach (var message in messages)
+        {
+            Assert.True(await Dispatch(message.Kind, message.AggregateId));
+        }
+        App.Clock.Advance(TimeSpan.FromMinutes(10));
+        foreach (var message in messages)
+        {
+            Assert.False(await Dispatch(message.Kind, message.AggregateId));
+            var failed = await WithDb(db => db.Outbox.SingleAsync(x => x.Id == message.Id));
+            Assert.Equal("AGREGADO_NO_ENCONTRADO", failed.FailureCode);
+            Assert.NotNull(failed.FailedAt);
+            Assert.Null(failed.Completed);
+            Assert.Equal(1, failed.Attempts);
+        }
     }
 
     [IntegrationFact]

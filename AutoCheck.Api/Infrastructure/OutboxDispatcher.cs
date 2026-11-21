@@ -32,12 +32,15 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
                     await passwordResets.Reconcile(message.AggregateId, PasswordResetStates.Uncertain, ct);
                     break;
                 case "PAGO_SANDBOX":
-                    var p = await db.Payments.SingleAsync(x => x.Id == message.AggregateId, ct);
+                    var p = await db.Payments.SingleOrDefaultAsync(x => x.Id == message.AggregateId, ct)
+                        ?? throw new MissingOutboxAggregateException();
                     var e = await sandbox.Process(p, ct);
                     await payments.Apply(e, message.Id.ToString(), ct);
                     break;
                 case "COPIA_MONGO":
-                    await archive.Copy(await db.Inspections.AsNoTracking().SingleAsync(x => x.Id == message.AggregateId, ct), ct);
+                    var inspection = await db.Inspections.AsNoTracking().SingleOrDefaultAsync(x => x.Id == message.AggregateId, ct)
+                        ?? throw new MissingOutboxAggregateException();
+                    await archive.Copy(inspection, ct);
                     break;
                 case "CERTIFICADO":
                     await db.LockAsync("inspection:" + message.AggregateId, ct);
@@ -46,7 +49,8 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
                 case "CITA_CONFIRMADA":
                 case "CITA_CANCELADA":
                     await db.LockAsync("notification:" + message.AggregateId, ct);
-                    var appointment = await db.Appointments.AsNoTracking().SingleAsync(x => x.Id == message.AggregateId, ct);
+                    var appointment = await db.Appointments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == message.AggregateId, ct)
+                        ?? throw new MissingOutboxAggregateException();
                     if (message.Kind == "CITA_CONFIRMADA" && appointment.State == "CANCELADA")
                     {
                         outcome = "SUPERADO_POR_CANCELACION";
@@ -125,11 +129,14 @@ public sealed class OutboxDispatcher(AutoCheckDb db, TimeProvider clock, IInspec
 
     private static string? PermanentFailure(Exception exception) => exception switch
     {
+        MissingOutboxAggregateException => "AGREGADO_NO_ENCONTRADO",
         JsonException => "PAYLOAD_INVALIDO",
         BsonSerializationException => "BSON_INVALIDO",
         MongoWriteException { WriteError.Code: 121 } => "ESQUEMA_MONGO_INVALIDO",
         _ => null
     };
+
+    public sealed class MissingOutboxAggregateException() : Exception("Outbox aggregate was not found in PostgreSQL.");
 }
 
 public sealed class BackgroundDelivery(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<BackgroundDelivery> logger) : BackgroundService

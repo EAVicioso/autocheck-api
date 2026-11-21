@@ -10,6 +10,7 @@ public sealed class MongoArchiveConnectionTests
     [InlineData("mongodb://mongo.example.test")]
     [InlineData("mongodb://127.0.0.1,localhost")]
     [InlineData("mongodb://127.0.0.1/?w=0")]
+    [InlineData("mongodb://127.0.0.1/?proxyHost=proxy.example.test")]
     [InlineData("mongodb://mongo.example.test/?tls=true&tlsInsecure=true")]
     public void RejectsInsecureOrUnacknowledgedSettings(string uri)
     {

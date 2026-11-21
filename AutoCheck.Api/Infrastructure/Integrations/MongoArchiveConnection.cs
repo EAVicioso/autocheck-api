@@ -20,7 +20,8 @@ public sealed class MongoArchiveConnection(IOptions<MongoDbOptions> options) : I
             throw ApiContract.Unavailable();
         }
 
-        var settings = MongoClientSettings.FromConnectionString(connection);
+        var url = new MongoUrl(connection);
+        var settings = MongoClientSettings.FromUrl(url);
         if (settings.AllowInsecureTls || !settings.WriteConcern.IsAcknowledged)
         {
             throw ApiContract.Unavailable();
@@ -29,7 +30,7 @@ public sealed class MongoArchiveConnection(IOptions<MongoDbOptions> options) : I
         if (!settings.UseTls)
         {
             var hosts = settings.Servers.ToArray();
-            if (hosts.Length != 1 || hosts[0].Host is not ("localhost" or "127.0.0.1" or "::1"))
+            if (!string.IsNullOrEmpty(url.ProxyHost) || hosts.Length != 1 || hosts[0].Host is not ("localhost" or "127.0.0.1" or "::1"))
             {
                 throw ApiContract.Unavailable();
             }
