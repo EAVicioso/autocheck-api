@@ -46,6 +46,20 @@ public sealed class PasswordResetProviderTests
         Assert.DoesNotContain("private-provider-response", error.Message);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, 400)]
+    [InlineData(HttpStatusCode.RequestTimeout, 503)]
+    [InlineData(HttpStatusCode.TooManyRequests, 503)]
+    [InlineData(HttpStatusCode.BadGateway, 503)]
+    public async Task RegistrationDistinguishesInvalidInputFromProviderOutage(HttpStatusCode status, int expectedStatus)
+    {
+        using var handler = new AuthResponse(status, Guid.NewGuid());
+        using var http = new HttpClient(handler);
+        var error = await Assert.ThrowsAsync<ApiException>(() => Create(http).Register("owner@example.test", "Synthetic12345", default));
+        Assert.Equal(expectedStatus, error.Status);
+        Assert.DoesNotContain("private-provider-response", error.Message);
+    }
+
     private static SupabaseIdentity Create(HttpClient http) => new(http, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["Supabase:Url"] = "https://example.test",

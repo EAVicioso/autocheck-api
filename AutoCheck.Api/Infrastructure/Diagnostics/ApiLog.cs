@@ -7,6 +7,9 @@ internal static partial class ApiLog
     internal static partial void RequestFailed(ILogger logger, string traceId, string code, string exceptionType);
     [LoggerMessage(EventId = 1002, Level = LogLevel.Warning, Message = "Outbox {DeliveryId} will retry ({ExceptionType})")]
     internal static partial void DeliveryRetry(ILogger logger, Guid deliveryId, string exceptionType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Outbox delivery {DeliveryId} failed permanently ({FailureCode})")]
+    internal static partial void DeliveryFailed(ILogger logger, Guid deliveryId, string failureCode);
     [LoggerMessage(EventId = 1003, Level = LogLevel.Warning, Message = "Delivery lane {Kind} unavailable ({ExceptionType})")]
     internal static partial void DeliveryUnavailable(ILogger logger, string kind, string exceptionType);
     [LoggerMessage(EventId = 1004, Level = LogLevel.Warning, Message = "Background processing unavailable ({ExceptionType})")]

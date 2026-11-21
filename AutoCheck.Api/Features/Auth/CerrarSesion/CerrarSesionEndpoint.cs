@@ -1,17 +1,14 @@
-using AutoCheck.Api.Features.Auth.Common;
-using static AutoCheck.Api.Features.Auth.Common.AuthSupport;
-
+using Microsoft.AspNetCore.Http.HttpResults;
+using System.Net.Http.Headers;
 namespace AutoCheck.Api.Features.Auth.CerrarSesion;
 
 public static class CerrarSesionEndpoint
 {
-    public static void MapCerrarSesion(this IEndpointRouteBuilder endpoints)
+    public static void MapCerrarSesion(this IEndpointRouteBuilder endpoints) => endpoints.MapPost("/logout", HandleAsync).RequireAuthorization().WithMetadata(new LogoutOperation(true)).Document<object>("CerrarSesion", "CU-02 / RS-10", 204);
+    private static async Task<NoContent> HandleAsync(HttpContext http, Handler handler, CancellationToken ct)
     {
-        endpoints.MapPost("/logout", async (HttpContext h, AppActor actor, AutoCheckDb db, CancellationToken ct) =>
-        {
-            // Local revocation is immediate even while the identity provider is unavailable.
-            await db.Sessions.Where(x => x.Id == actor.SessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.Revoked, true), ct);
-            return Results.NoContent();
-        }).RequireAuthorization().Document<object>("CerrarSesion", "CU-02 / RS-10", 204);
+        var header = AuthenticationHeaderValue.Parse(http.Request.Headers.Authorization.ToString());
+        await handler.Execute(new Command(header.Parameter ?? ""), ct);
+        return TypedResults.NoContent();
     }
 }

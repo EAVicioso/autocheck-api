@@ -21,6 +21,9 @@ public static class IniciarPagoEndpoint
     {
         actor.RequireRole(Roles.Citizen);
         await db.LockAsync("center:" + r.CentroId, ct);
+        await db.LockAsync("user:" + actor.Id, ct);
+        await db.LockAsync("vehicle:" + r.VehiculoId, ct);
+        await RequireActiveOwner(db, actor.Id, ct);
         var now = clock.GetUtcNow();
         var amount = config.GetValue("Sandbox:Monto", 1000m);
         if (amount <= 0 || amount > 9999999999.99m || decimal.Round(amount, 2) != amount)
@@ -28,7 +31,7 @@ public static class IniciarPagoEndpoint
             throw ApiContract.Unavailable();
         }
 
-        if (!await db.Vehicles.AnyAsync(x => x.Id == r.VehiculoId && x.OwnerId == actor.Id, ct))
+        if (!await db.Vehicles.AnyAsync(x => x.Id == r.VehiculoId && x.OwnerId == actor.Id && x.ArchivedAt == null, ct))
         {
             AppActor.Deny();
         }
@@ -76,6 +79,14 @@ public static class IniciarPagoEndpoint
         db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = now, Payload = ApiReply.Serialize(new { centroId = r.CentroId }) });
         return ApiReply.Created($"/api/pagos/intentos/{p.Id}", new HoldResponse(p.Id, p.Id, "RETENIDO", p.Expires, p.Amount, p.Currency));
     }, idempotent: true);
+
+    private static async Task RequireActiveOwner(AutoCheckDb db, Guid id, CancellationToken ct)
+    {
+        if (!await db.Users.AnyAsync(x => x.Id == id && x.Active && x.ArchivedAt == null, ct))
+        {
+            AppActor.Deny();
+        }
+    }
 
     private static async Task ValidateReservation(StartPaymentRequest r, Guid ownerId, DateTimeOffset now, AutoCheckDb db, CancellationToken ct)
     {

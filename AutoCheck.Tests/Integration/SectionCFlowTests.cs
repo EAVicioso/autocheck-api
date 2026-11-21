@@ -80,13 +80,15 @@ public partial class BusinessFlowTests
         await Json(await Inspector.PutAsJsonAsync($"/api/inspecciones/{id}/registro", new { versionEsperada = 0, defectos = Array.Empty<object>() }));
         await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "scope-close"));
         var events = await WithDb(db => db.Outbox.CountAsync());
-        var audits = await WithDb(db => db.Audit.CountAsync());
+        var audits = await WithDb(db => db.Audit.CountAsync(x => x.Operation != "SEGURIDAD_RECHAZADA"));
+        var rejectedAudits = await WithDb(db => db.Audit.CountAsync(x => x.Operation == "SEGURIDAD_RECHAZADA" && x.ActorId == InspectorId && x.Outcome == "403"));
         await WithDb(db => db.Users.Where(x => x.Id == InspectorId).ExecuteUpdateAsync(s => s.SetProperty(x => x.CenterId, (Guid?)null)));
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(Inspector, HttpMethod.Post, "/api/inspecciones", new { citaId = appointment }, "scope-start")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "scope-close")).StatusCode);
         Assert.Equal(1, await WithDb(db => db.Inspections.CountAsync()));
         Assert.Equal(events, await WithDb(db => db.Outbox.CountAsync()));
-        Assert.Equal(audits, await WithDb(db => db.Audit.CountAsync()));
+        Assert.Equal(audits, await WithDb(db => db.Audit.CountAsync(x => x.Operation != "SEGURIDAD_RECHAZADA")));
+        Assert.Equal(rejectedAudits + 2, await WithDb(db => db.Audit.CountAsync(x => x.Operation == "SEGURIDAD_RECHAZADA" && x.ActorId == InspectorId && x.Outcome == "403")));
     }
 
     [IntegrationFact]

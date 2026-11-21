@@ -1,3 +1,3 @@
 namespace AutoCheck.Api.Features.Vehiculos.Common;
 
-public sealed record VehicleResponse(Guid Id, string Matricula, string Vin, int Anio, Guid ModeloId, Guid ColorId);
+public sealed record VehicleResponse(Guid Id, string Matricula, string Vin, int Anio, Guid ModeloId, Guid ColorId, long Version, DateTimeOffset? ArchivadoUtc);
