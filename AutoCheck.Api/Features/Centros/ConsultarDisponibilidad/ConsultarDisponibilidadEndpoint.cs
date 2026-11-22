@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Centros.Common;
 using static AutoCheck.Api.Features.Centros.Common.CenterSupport;
 

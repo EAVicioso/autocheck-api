@@ -20,7 +20,7 @@ Fronteras comunes: 400 para JSON/validación y filtros; 401 para identidad/sesi�
 | A02 | `POST /api/auth/login` | Público | `LoginRequest → SessionResponse` | 200; 400,401,403,429,503 | LOGIN / INICIO_BLOQUEO |
 | A03 | `POST /api/auth/refresh` | Público; sesión local válida | `RefreshRequest → SessionResponse` | 200; 400,401,429,503 | SESION_RENOVADA |
 | A04 | `POST /api/auth/recuperacion` | Público | `RecoveryRequest → RecoveryResponse` | 202; 400,429,503 | RECUPERACION_SOLICITADA |
-| A05 | `POST /api/auth/restablecimiento` | Bearer de recuperación validado por Auth | `ResetRequest → NoContent` | 204; 400,401,409,429,503 | RESTABLECIMIENTO_CONTRASENA / RESTABLECIMIENTO_RECHAZADO |
+| A05 | `POST /api/auth/restablecimiento` | TokenHash de un enlace de recuperación canjeado por Auth | `ResetRequest → NoContent` | 204; 400,401,409,429,503 | RESTABLECIMIENTO_CONTRASENA / RESTABLECIMIENTO_RECHAZADO |
 | A06 | `POST /api/auth/logout` | Sesión propia; reintento revocado permitido | `Command(AccessToken) → NoContent` | 204; 401,429,503 | LOGOUT |
 | A07 | `POST /api/auth/actividad` | SesionActiva | `Sin cuerpo → NoContent` | 204; 401,403,429,503 | ACTIVIDAD_REGISTRADA |
 | AU01 | `GET /api/auditorias` | AuditoriaGlobal | `Query → PageResponse<AuditResponse>` | 200; 400,401,403,503 | — |

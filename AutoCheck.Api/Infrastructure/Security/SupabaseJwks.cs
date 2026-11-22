@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype. Supabase JWKS with automatic key rotation.
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;

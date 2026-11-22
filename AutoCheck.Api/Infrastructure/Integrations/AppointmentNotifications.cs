@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.Extensions.Options;
 using MimeKit;
 

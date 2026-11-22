@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net;
 using AutoCheck.Api.Infrastructure;
 using AutoCheck.Api.Infrastructure.Security;

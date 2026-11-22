@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype. No shared database is changed by migration generation.
 using Microsoft.EntityFrameworkCore.Design;
 

@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Auth.Common;
 using AutoCheck.Api.Infrastructure;
 using AutoCheck.Api.Infrastructure.Security;
@@ -106,7 +108,7 @@ public sealed class IdentityHandlerTests
         var provider = Substitute.For<IIdentityProvider>();
         var revocation = Substitute.For<IPasswordResetRevocation>();
         var authId = Guid.NewGuid();
-        provider.ValidateRecovery("synthetic", default).Returns(authId);
+        provider.ValidateRecovery("synthetic", default).Returns(new ProviderRecovery(authId, "synthetic"));
         revocation.Prepare(authId, "test", default).Returns(Task.FromException<Guid>(new ApiException(409, "RECUPERACION_PENDIENTE", "Pendiente")));
         await Assert.ThrowsAsync<ApiException>(() => new Reset.RestablecerContrasenaHandler(provider, revocation).Execute(new("synthetic", "replacement"), "test", default));
         await provider.DidNotReceive().Reset(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());

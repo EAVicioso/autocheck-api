@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1; Section C / PA-05/08/09/10. Version 1.0; history: Git.
 using AutoCheck.Api.Features.Reportes.Common;
 using static AutoCheck.Api.Features.Reportes.Common.ReportSupport;
@@ -17,12 +19,14 @@ public static class ConsultarMetricasEndpoint
                 a.RequireCenter(centroId.Value);
             }
 
+            await using var snapshot = await db.Database.BeginTransactionAsync(
+                System.Data.IsolationLevel.RepeatableRead, ct);
             var q = db.Metrics.AsNoTracking().Where(x => x.Day >= from && x.Day <= to && (a.CenterId == null || a.CenterId == x.CenterId) && (centroId == null || x.CenterId == centroId) && (rampaId == null || x.RampId == rampaId) && (inspectorId == null || x.InspectorId == inspectorId));
             var totals = await q.GroupBy(_ => 1).Select(group => new { Approved = group.Sum(x => x.Approved), Rejected = group.Sum(x => x.Rejected) }).SingleOrDefaultAsync(ct);
             var approved = totals?.Approved ?? 0;
             var rejected = totals?.Rejected ?? 0;
             var total = approved + rejected;
-            return new
+            var result = new
             {
                 cerradas = total,
                 aprobadas = approved,
@@ -32,6 +36,8 @@ public static class ConsultarMetricasEndpoint
                 ultimaActualizacionUtc = await db.Aggregation.Select(x => (DateTimeOffset?)x.Updated).SingleOrDefaultAsync(ct),
                 items = await q.OrderBy(x => x.Day).ThenBy(x => x.CenterId).ThenBy(x => x.RampId).ThenBy(x => x.InspectorId).Skip((ApiContract.Page(h) - 1) * ApiContract.Size(h)).Take(ApiContract.Size(h)).Select(x => new { dia = x.Day, centroId = x.CenterId, rampaId = x.RampId, inspectorId = x.InspectorId, aprobadas = x.Approved, rechazadas = x.Rejected, cerradas = x.Approved + x.Rejected, porcentajeRechazo = x.Approved + x.Rejected == 0 ? (double?)null : 100d * x.Rejected / (x.Approved + x.Rejected) }).ToListAsync(ct)
             };
+            await snapshot.CommitAsync(ct);
+            return result;
         }).Document<MetricsResponse>("ConsultarMetricas", "RF-DAS-01/02 / PA-08a,d");
     }
 }

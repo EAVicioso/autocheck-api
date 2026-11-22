@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Features.Certificados.DescargarCertificado;
 
 public sealed class Data(AutoCheckDb db, AppActor actor) : IData

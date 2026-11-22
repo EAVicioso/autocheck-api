@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1; EA-06 / PA-05. Version 1.0; history: Git.
 namespace AutoCheck.Api.Features.Inspecciones.Common;
 

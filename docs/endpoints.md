@@ -1,9 +1,13 @@
 # Contratos HTTP de AutoCheck
 
-Versión: 1.2 · Fecha de emisión: 2026-11-17 · Autores: Engels Vicioso / Equipo AutoCheck.
-Historial de cambios: 1.0 índice inicial; 1.1 contratos Sección C; 1.2 aclaración del valor predeterminado de cantidad (EE-04, EA-03).
+Versión: 1.3 · Fecha de emisión: 2026-11-22 · Autores: Equipo AutoCheck.
+Historial de cambios: 1.0 índice inicial; 1.1 contratos Sección C; 1.2 cantidad predeterminada; 1.3 recuperación, confirmaciones de pago y contrato QR (IS-04, IC-03, RF-CER-01).
 
 SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.json` en desarrollo o con `OpenApi__Enabled=true`.
+
+- `POST /api/auth/restablecimiento` recibe `token` con el `TokenHash` del enlace de correo y `nuevaContrasena`. El servidor canjea la prueba con Supabase.
+- La verificación QR satisfactoria devuelve `certificadoId`, `emisionUtc`, `centro` y `resultado`. El estado HTTP distingue éxito, ID inexistente (404) e integridad inválida (409). RF-CER-01 y PA-07a requieren retirar el campo público `integridad`. CI reconoce exclusivamente ese cambio previsto en el contrato 200.
+- El webhook de pago conserva su respuesta original al repetir un evento. Una reversión sin cita puede devolver `siguienteAccion: SELECCIONAR_OTRO_HORARIO`.
 
 | Método | Ruta | Operación / trazabilidad | Respuestas documentadas |
 |---|---|---|---|

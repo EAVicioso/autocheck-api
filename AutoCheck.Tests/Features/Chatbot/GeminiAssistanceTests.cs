@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1; RF-CHAT-01/02 / PA-09. Version 1.0; history: Git.
 using System.Net;
 using System.Net.Http.Json;

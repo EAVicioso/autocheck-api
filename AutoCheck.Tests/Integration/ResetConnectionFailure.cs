@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;

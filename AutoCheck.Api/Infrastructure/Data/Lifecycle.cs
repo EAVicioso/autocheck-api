@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Infrastructure.Data;
 
 // DEC-LIFECYCLE-01; shared integrity predicates, never an HTTP endpoint.

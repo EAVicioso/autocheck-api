@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1; Section C / PA-05/08/09/10. Version 1.0; history: Git.
 using AutoCheck.Api.Features.Inspecciones.Common;
 using AutoCheck.Api.Features.Vehiculos;
@@ -25,6 +27,8 @@ public static class IniciarInspeccionEndpoint
             await db.LockAsync("vehicle:" + a.VehicleId, ct);
             await RequireActiveResources(db, actor.Id, a.VehicleId, ct);
             await db.LockAsync("rules", ct);
+            await actor.RevalidateAuthority(db, clock, ct);
+            actor.RequireRole(Roles.Inspector);
             await db.Entry(a).ReloadAsync(ct);
             if (a.InspectorId != actor.Id || actor.CenterId != a.CenterId)
             {
@@ -36,9 +40,11 @@ public static class IniciarInspeccionEndpoint
                 throw ApiContract.Conflict("CITA_NO_CONFIRMADA", "La cita no está disponible para iniciar.");
             }
 
-            var rule = await db.Rules.Where(x => x.Effective <= clock.GetUtcNow()).OrderByDescending(x => x.Effective).FirstAsync(ct);
             var vehicle = await db.Vehicles.AsNoTracking().SingleAsync(x => x.Id == a.VehicleId, ct);
             var center = await db.Centers.AsNoTracking().SingleAsync(x => x.Id == a.CenterId, ct);
+            var started = clock.GetUtcNow();
+            var rule = await db.Rules.AsNoTracking().Where(x => x.Effective <= started)
+                .OrderByDescending(x => x.Effective).FirstAsync(ct);
             var i = new Inspection
             {
                 AppointmentId = a.Id,
@@ -48,7 +54,7 @@ public static class IniciarInspeccionEndpoint
                 RampId = a.RampId,
                 InspectorId = actor.Id,
                 PreviousId = a.PreviousInspectionId,
-                Started = clock.GetUtcNow(),
+                Started = started,
                 RuleVersion = rule.Version,
                 MaxMinor = rule.MaxMinor,
                 MongoId = ObjectId.GenerateNewId().ToString(),

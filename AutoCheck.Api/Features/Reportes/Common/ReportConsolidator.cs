@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1; RF-DAS-03 / PA-08. Version 1.1; history: Git.
 namespace AutoCheck.Api.Features.Reportes.Common;
 
@@ -5,7 +7,7 @@ public sealed class ReportConsolidator(AutoCheckDb db, TimeProvider clock)
 {
     public async Task Run(CancellationToken ct)
     {
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
         await db.LockAsync("reports", ct);
         var now = clock.GetUtcNow();
         // Closed inspections are immutable. Aggregate in PostgreSQL without materializing history
@@ -15,7 +17,7 @@ public sealed class ReportConsolidator(AutoCheckDb db, TimeProvider clock)
             SELECT ("Closed" AT TIME ZONE 'America/Santo_Domingo')::date, "CenterId", "RampId", "InspectorId",
                    count(*) FILTER (WHERE "Result" = 'Aprobado')::int,
                    count(*) FILTER (WHERE "Result" = 'Rechazado')::int, {now}
-            FROM autocheck."Inspection" WHERE "Closed" IS NOT NULL
+            FROM autocheck."Inspection" WHERE "State" = 'CERRADA' AND "Closed" IS NOT NULL
             GROUP BY 1, 2, 3, 4
             ON CONFLICT ("Day", "CenterId", "RampId", "InspectorId") DO UPDATE
             SET "Approved" = EXCLUDED."Approved", "Rejected" = EXCLUDED."Rejected", "Updated" = EXCLUDED."Updated"
@@ -28,7 +30,7 @@ public sealed class ReportConsolidator(AutoCheckDb db, TimeProvider clock)
                        min("Closed") OVER recent AS first_close,
                        array_agg("Id") OVER recent AS inspections,
                        array_agg("RampId") OVER recent AS ramps
-                FROM autocheck."Inspection" WHERE "Closed" IS NOT NULL
+                FROM autocheck."Inspection" WHERE "State" = 'CERRADA' AND "Closed" IS NOT NULL
                 WINDOW recent AS (PARTITION BY "InspectorId", "CenterId" ORDER BY "Closed", "Id"
                                   ROWS BETWEEN 20 PRECEDING AND CURRENT ROW)
             ), qualifying AS (

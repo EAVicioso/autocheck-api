@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -72,6 +74,25 @@ public sealed class LifecycleRemediationTests : DatabaseTest
         });
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.True(await WithDb(db => db.Users.AnyAsync(x => x.Id == CitizenId && x.Active && x.ArchivedAt == null && x.Version == 1)));
+    }
+
+    [IntegrationFact]
+    public async Task PA12cQueuedScheduleChangeRechecksRevokedPermission()
+    {
+        using var response = await WithDb(async db =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+            await db.LockAsync("center:" + CenterId, default);
+            var pending = Administrator.PutAsJsonAsync($"/api/centros/{CenterId}/horarios",
+                new { horarios = Array.Empty<object>() });
+            await WaitForAdvisoryWaiters(1);
+            await db.Users.Where(x => x.Id == AdminId)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.Permissions, Array.Empty<string>()));
+            await tx.CommitAsync();
+            return await pending;
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(await WithDb(db => db.Schedules.AnyAsync(x => x.CenterId == CenterId)));
     }
 
     [IntegrationFact]

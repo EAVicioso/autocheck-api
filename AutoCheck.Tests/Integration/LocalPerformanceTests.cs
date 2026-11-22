@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -190,23 +192,39 @@ public sealed class LocalPerformanceTests(ITestOutputHelper output) : DatabaseTe
 
     private async Task<double> IssueDownloadAndVerify(Guid inspection, X509Certificate2 issuer, CancellationToken ct)
     {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(TimeSpan.FromSeconds(10));
+        var token = budget.Token;
         var started = Stopwatch.GetTimestamp();
+
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/inspecciones/{inspection}/certificado");
         request.Headers.Add("Idempotency-Key", inspection.ToString("N"));
-        using var accepted = await Citizen.SendAsync(request, ct);
+        using var accepted = await Citizen.SendAsync(request, token);
         Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
-        using var pending = JsonDocument.Parse(await accepted.Content.ReadAsByteArrayAsync(ct));
+        using var pending = JsonDocument.Parse(await accepted.Content.ReadAsByteArrayAsync(token));
         var certificate = pending.RootElement.GetProperty("id").GetGuid();
-        using (var scope = App.Services.CreateScope())
+
+        if (!BackgroundWorkers)
         {
-            Assert.True(await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchOne(ct, "CERTIFICADO", inspection));
+            using var scope = App.Services.CreateScope();
+            Assert.True(await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>()
+                .DispatchOne(token, "CERTIFICADO", inspection));
         }
-        using var response = await Citizen.GetAsync($"/api/certificados/{certificate}/pdf", ct);
-        response.EnsureSuccessStatusCode();
-        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-        var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-        Assert.True(OfflinePdfVerifier.Verify(bytes, issuer));
-        return elapsed;
+
+        while (true)
+        {
+            using var response = await Citizen.GetAsync($"/api/certificados/{certificate}/pdf", token);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync(token);
+                var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                Assert.True(OfflinePdfVerifier.Verify(bytes, issuer));
+                return elapsed;
+            }
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+        }
     }
 
     private async Task<HistoryFixture[]> SeedHistory(AutoCheckDb db, CancellationToken ct)

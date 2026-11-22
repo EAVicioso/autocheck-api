@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;

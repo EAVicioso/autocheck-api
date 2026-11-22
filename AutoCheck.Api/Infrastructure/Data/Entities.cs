@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1. Persistence records; never HTTP responses.
 namespace AutoCheck.Api.Infrastructure.Data;
 
@@ -110,6 +112,7 @@ public sealed class PaymentEvent
     public string Id { get; set; } = "";
     public Guid AttemptId { get; set; }
     public string Outcome { get; set; } = "";
+    public string? ResponseJson { get; set; }
 }
 
 public sealed class Appointment

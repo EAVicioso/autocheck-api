@@ -720,6 +720,9 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ResponseJson")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AttemptId");

@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Infrastructure;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Text.Json;

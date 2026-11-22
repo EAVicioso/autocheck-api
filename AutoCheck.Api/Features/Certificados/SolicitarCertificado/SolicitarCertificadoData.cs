@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Certificados.Common;
 using static AutoCheck.Api.Features.Certificados.Common.CertificateSupport;
 namespace AutoCheck.Api.Features.Certificados.SolicitarCertificado;

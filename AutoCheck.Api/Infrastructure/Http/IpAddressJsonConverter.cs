@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net;
 using System.Text.Json.Serialization;
 namespace AutoCheck.Api.Infrastructure;

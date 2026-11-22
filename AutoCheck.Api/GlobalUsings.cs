@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1. Source history is maintained in Git.
 global using System.Text.Json;
 global using AutoCheck.Api.Infrastructure;

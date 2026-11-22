@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using AutoCheck.Api.Features.Usuarios.Common;
 using static AutoCheck.Api.Features.Usuarios.Common.UserSupport;
@@ -8,7 +10,7 @@ public static class CambiarAccesoEndpoint
 {
     public static void MapCambiarAcceso(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPatch("/{id:guid}/acceso", HandleAsync).RequireAuthorization("GestionUsuarios").Interactive().Document<UserResponse>("CambiarAcceso", "CU-11 / PA-11a,b").Validated<AccessRequest>();
+        endpoints.MapPatch("/{id:guid}/acceso", HandleAsync).RequireAuthorization("GestionUsuarios").Interactive().WithMetadata(new MutationAudit("CAMBIO_ACCESO", UseUserId: true)).Document<UserResponse>("CambiarAcceso", "CU-11 / PA-11a,b").Validated<AccessRequest>();
     }
 
     private static async Task<Results<Ok<UserResponse>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync(Guid id, AccessRequest r, HttpContext h, Handler handler, CancellationToken ct)

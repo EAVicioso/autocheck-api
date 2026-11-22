@@ -1,7 +1,11 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Security.Cryptography;
 using System.Text;
 
 namespace AutoCheck.Api.Infrastructure;
+
+public sealed record MutationAudit(string Operation, bool UseUserId = false, bool SkipUnchanged = false);
 
 public sealed class Mutation(AutoCheckDb db, AppActor actor, TimeProvider clock)
 {
@@ -40,24 +44,15 @@ public sealed class Mutation(AutoCheckDb db, AppActor actor, TimeProvider clock)
         }
 
         db.ChangeTracker.DetectChanges();
-        var name = http.GetEndpoint()?.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.IEndpointNameMetadata>()?.EndpointName ?? operation;
-        var auditName = name switch
-        {
-            "RegistrarActividad" => "ACTIVIDAD_REGISTRADA",
-            "SolicitarCertificado" => "CERTIFICADO_SOLICITADO",
-            "ActualizarPerfil" => "PERFIL_ACTUALIZADO",
-            "CambiarAcceso" => "CAMBIO_ACCESO",
-            "RegistrarVehiculo" => "VEHICULO_REGISTRADO",
-            "ActualizarVehiculo" => "VEHICULO_ACTUALIZADO",
-            "ArchivarVehiculo" => "VEHICULO_ARCHIVADO",
-            "ArchivarUsuario" => "USUARIO_ARCHIVADO",
-            _ => name
-        };
-        if (name.StartsWith("Archivar", StringComparison.Ordinal) && !db.ChangeTracker.HasChanges())
+        var metadata = http.GetEndpoint()?.Metadata;
+        var name = metadata?.GetMetadata<Microsoft.AspNetCore.Routing.IEndpointNameMetadata>()?.EndpointName ?? operation;
+        var audit = metadata?.GetMetadata<MutationAudit>() ?? new MutationAudit(name);
+        if (audit.SkipUnchanged && !db.ChangeTracker.HasChanges())
         {
             return reply;
         }
-        RecordAudit(http, auditName);
+
+        RecordAudit(http, audit);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return reply;
@@ -76,15 +71,15 @@ public sealed class Mutation(AutoCheckDb db, AppActor actor, TimeProvider clock)
         return executed ? current : (reply.Status, JsonSerializer.Deserialize<T>(reply.Json, ApiReply.JsonOptions), reply.Location);
     }
 
-    private void RecordAudit(HttpContext http, string auditName)
+    private void RecordAudit(HttpContext http, MutationAudit audit)
     {
         var changed = db.ChangeTracker.Entries().FirstOrDefault(x => x.Entity is UserAccount or Vehicle && x.State is EntityState.Modified or EntityState.Added);
         db.Audit.Add(new()
         {
             ActorId = actor.Id == Guid.Empty ? null : actor.Id,
             At = clock.GetUtcNow(),
-            Operation = auditName,
-            Entity = auditName == "CAMBIO_ACCESO" && changed?.Entity is UserAccount user
+            Operation = audit.Operation,
+            Entity = audit.UseUserId && changed?.Entity is UserAccount user
                 ? user.Id.ToString()
                 : http.Request.Path,
             Outcome = "CONFIRMADO",

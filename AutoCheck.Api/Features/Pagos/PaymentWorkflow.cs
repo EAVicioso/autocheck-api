@@ -1,8 +1,15 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1; RF-CIT-01/02/03, CU-04, PA-03/04.
 namespace AutoCheck.Api.Features.Pagos;
 
 public sealed record SandboxEvent(string EventoId, Guid IntentoId, string Resultado);
-public sealed record PaymentStateResponse(Guid IntentoId, Guid RetencionId, string Estado, DateTimeOffset ExpiraUtc, Guid? CitaId, Guid? ReversionId, decimal Monto, string Moneda);
+public sealed record PaymentStateResponse(Guid IntentoId, Guid RetencionId, string Estado, DateTimeOffset ExpiraUtc, Guid? CitaId, Guid? ReversionId, decimal Monto, string Moneda)
+{
+    public string? SiguienteAccion => Estado == "REVERTIDO" && CitaId is null
+        ? "SELECCIONAR_OTRO_HORARIO"
+        : null;
+}
 public interface IPaymentSandbox
 {
     Task<SandboxEvent> Process(PaymentAttempt attempt, CancellationToken ct);
@@ -22,69 +29,101 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
         await db.LockAsync("user:" + payment.UserId, ct);
         await db.LockAsync("vehicle:" + payment.VehicleId, ct);
         await db.Entry(payment).ReloadAsync(ct);
-        if (!await TryRecordEvent(e, ct) || payment.State == "APROBADO" || payment.ReversalId is not null)
-        {
-            return await State(payment, ct);
-        }
-
-        var block = await db.Blocks.SingleOrDefaultAsync(x => x.RampId == payment.RampId && x.Starts == payment.Starts, ct);
-        var valid = e.Resultado == "APROBADO" && block is { State: "RETENIDO" } && block.AttemptId == payment.Id && payment.State == "PENDIENTE"
-            && await db.Users.AnyAsync(x => x.Id == payment.UserId && x.Active && x.ArchivedAt == null, ct)
-            && await db.Vehicles.AnyAsync(x => x.Id == payment.VehicleId && x.OwnerId == payment.UserId && x.ArchivedAt == null, ct)
-            && block.Expires > clock.GetUtcNow();
-        if (valid)
-        {
-            payment.State = "APROBADO";
-            block!.State = "CONFIRMADO";
-            var appointment = new Appointment
-            {
-                AttemptId = payment.Id,
-                UserId = payment.UserId,
-                VehicleId = payment.VehicleId,
-                CenterId = payment.CenterId,
-                RampId = payment.RampId,
-                Starts = payment.Starts,
-                PreviousInspectionId = payment.PreviousInspectionId
-            };
-            db.Appointments.Add(appointment);
-            db.Outbox.Add(new() { Kind = "CITA_CONFIRMADA", AggregateId = appointment.Id, Available = clock.GetUtcNow() });
-        }
-        else
-        {
-            ApplyUnconfirmedResult(payment, block, e.Resultado);
-        }
-
-        db.Audit.Add(new() { At = clock.GetUtcNow(), Operation = payment.ReversalId is null ? "PAGO" : "REVERSION", Entity = payment.Id.ToString(), Outcome = payment.State, Correlation = correlation });
-        if (payment.State == "APROBADO" || (block?.AttemptId == payment.Id && block.State == "RETENIDO"))
-        {
-            db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = payment.CenterId }) });
-        }
-
-        return await State(payment, ct);
-    }
-
-    private async Task<bool> TryRecordEvent(SandboxEvent e, CancellationToken ct)
-    {
+        // The unique-key insert serializes globally, including with workers from before the upgrade.
         var inserted = await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO autocheck."PaymentEvent" ("Id", "AttemptId", "Outcome")
             VALUES ({e.EventoId}, {e.IntentoId}, {e.Resultado})
             ON CONFLICT ("Id") DO NOTHING
             """, ct);
-        if (inserted == 1)
+        var receipt = await db.PaymentEvents.SingleAsync(x => x.Id == e.EventoId, ct);
+        if (inserted == 0)
         {
-            return true;
+            return await Replay(receipt, e, payment, ct);
         }
 
-        var previous = await db.PaymentEvents.AsNoTracking().SingleAsync(x => x.Id == e.EventoId, ct);
-        if (previous.AttemptId != e.IntentoId || previous.Outcome != e.Resultado)
+        if (payment.State != "APROBADO" && payment.ReversalId is null)
+        {
+            await ApplyTransition(payment, e.Resultado, correlation, ct);
+        }
+
+        var response = await State(payment, ct);
+        receipt.ResponseJson = ApiReply.Serialize(response);
+        return response;
+    }
+
+    private async Task<PaymentStateResponse> Replay(PaymentEvent receipt, SandboxEvent e, PaymentAttempt payment, CancellationToken ct)
+    {
+        if (receipt.AttemptId != e.IntentoId || receipt.Outcome != e.Resultado)
         {
             throw ApiContract.Conflict("EVENTO_CONFLICTO", "El identificador de evento ya fue utilizado.");
         }
 
-        return false;
+        if (receipt.ResponseJson is { } json)
+        {
+            return JsonSerializer.Deserialize<PaymentStateResponse>(json, ApiReply.JsonOptions)
+                ?? throw ApiContract.Unavailable();
+        }
+
+        // Older receipts stored only the input; preserve the first observed replay after upgrade.
+        var response = await State(payment, ct);
+        receipt.ResponseJson = ApiReply.Serialize(response);
+        return response;
     }
 
-    private void ApplyUnconfirmedResult(PaymentAttempt payment, BookingBlock? block, string outcome)
+    private async Task ApplyTransition(PaymentAttempt payment, string outcome, string correlation, CancellationToken ct)
+    {
+        var block = await db.Blocks.SingleOrDefaultAsync(
+            x => x.RampId == payment.RampId && x.Starts == payment.Starts && x.AttemptId == payment.Id && x.State == "RETENIDO", ct);
+        var canConfirm = outcome == "APROBADO" && block is not null && payment.State == "PENDIENTE"
+            && await db.Users.AnyAsync(x => x.Id == payment.UserId && x.Active && x.ArchivedAt == null, ct)
+            && await db.Vehicles.AnyAsync(x => x.Id == payment.VehicleId && x.OwnerId == payment.UserId && x.ArchivedAt == null, ct);
+        var now = clock.GetUtcNow();
+        if (canConfirm && block is not null && block.Expires > now)
+        {
+            Confirm(payment, block, correlation, now);
+        }
+        else
+        {
+            Release(payment, block, outcome, correlation, now);
+        }
+
+        db.Audit.Add(new()
+        {
+            At = now, Operation = payment.ReversalId is null ? "PAGO" : "REVERSION",
+            Entity = payment.Id.ToString(), Outcome = payment.State, Correlation = correlation,
+            After = payment.ReversalId is null ? null : ApiReply.Serialize(new { reversionId = payment.ReversalId })
+        });
+        if (block is not null)
+        {
+            db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = now, Payload = ApiReply.Serialize(new { centroId = payment.CenterId }) });
+        }
+    }
+
+    private void Confirm(PaymentAttempt payment, BookingBlock block, string correlation, DateTimeOffset now)
+    {
+        payment.State = "APROBADO";
+        block.State = "CONFIRMADO";
+        var appointment = new Appointment
+        {
+            AttemptId = payment.Id,
+            UserId = payment.UserId,
+            VehicleId = payment.VehicleId,
+            CenterId = payment.CenterId,
+            RampId = payment.RampId,
+            Starts = payment.Starts,
+            PreviousInspectionId = payment.PreviousInspectionId
+        };
+        db.Appointments.Add(appointment);
+        db.Outbox.Add(new() { Kind = "CITA_CONFIRMADA", AggregateId = appointment.Id, Available = now });
+        db.Audit.Add(new()
+        {
+            At = now, Operation = "CONFIRMACION_CITA", Entity = appointment.Id.ToString(),
+            Outcome = "CONFIRMADA", Correlation = correlation,
+            After = ApiReply.Serialize(new { intentoId = payment.Id })
+        });
+    }
+
+    private void Release(PaymentAttempt payment, BookingBlock? block, string outcome, string correlation, DateTimeOffset now)
     {
         if (outcome == "APROBADO")
         {
@@ -96,10 +135,20 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
             payment.State = outcome;
         }
 
-        if (block?.AttemptId == payment.Id && block.State == "RETENIDO")
+        if (block is null)
         {
-            db.Blocks.Remove(block);
+            return;
         }
+
+        if (block.Expires <= now)
+        {
+            db.Audit.Add(new()
+            {
+                At = now, Operation = "EXPIRACION", Entity = payment.Id.ToString(),
+                Outcome = "VENCIDA", Correlation = correlation
+            });
+        }
+        db.Blocks.Remove(block);
     }
 
     public async Task<PaymentStateResponse> State(PaymentAttempt p, CancellationToken ct)

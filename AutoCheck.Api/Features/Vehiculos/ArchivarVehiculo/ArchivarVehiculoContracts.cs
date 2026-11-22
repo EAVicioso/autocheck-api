@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Features.Vehiculos.ArchivarVehiculo;
 
 public sealed record Command(Guid Id, long Version);

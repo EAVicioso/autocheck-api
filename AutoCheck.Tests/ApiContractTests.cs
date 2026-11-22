@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;

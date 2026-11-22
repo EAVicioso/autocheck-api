@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net.Http.Json;
 using AutoCheck.Api.Features.Chatbot.Common;
 using static AutoCheck.Api.Features.Chatbot.Common.AssistanceSupport;
@@ -32,11 +34,11 @@ public static class ConsultarAsistenciaEndpoint
             {
                 throw;
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or ApiException or JsonException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
+            catch (Exception ex) when (ex is HttpRequestException or TimeoutException or OperationCanceledException or ApiException or JsonException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
             {
-                return Results.Json(new AssistanceResponse(Contingency, "NO_DETERMINADA", "SERVICIO_NO_DISPONIBLE"), statusCode: 503);
+                return Results.Json(Unavailable, statusCode: 503);
             }
-        }).RequireAuthorization().RequireRateLimiting("public").Interactive().WithTags("Asistencia").WithName("ConsultarAsistencia").WithSummary("RF-CHAT-01/02 / IS-05 / PA-09").Produces<AssistanceResponse>().Produces<AssistanceResponse>(400).Produces<AssistanceResponse>(503);
+        }).RequireAuthorization().RequireRateLimiting("public").Interactive().WithTags("Asistencia").WithName("ConsultarAsistencia").WithSummary("RF-CHAT-01/02 / IS-05 / PA-09").Produces<AssistanceResponse>().Produces<AssistanceResponse>(400).Produces<AssistanceResponse>(503).WithRequestTimeout(TimeoutPolicy);
     }
 }
 

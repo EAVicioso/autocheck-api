@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Centros.ActualizarCentro;
 using AutoCheck.Api.Features.Centros.ActualizarRampa;
 using AutoCheck.Api.Features.Centros.ConfigurarHorarios;

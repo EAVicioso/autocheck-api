@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -253,9 +255,8 @@ public sealed class SupabaseScenario : IAsyncDisposable
     public async Task<FixtureUser> ResetPassword(FixtureUser user)
     {
         var link = await Send(authAdmin, HttpMethod.Post, "admin/generate_link", new { type = "recovery", email = user.Email });
-        var verified = await Send(authPublic, HttpMethod.Post, "verify", new { type = "recovery", token_hash = link.GetProperty("hashed_token").GetString() });
         var password = Password();
-        _ = await Send(Client(), HttpMethod.Post, "/api/auth/restablecimiento", new { token = verified.GetProperty("access_token").GetString(), nuevaContrasena = password }, HttpStatusCode.NoContent);
+        _ = await Send(Client(), HttpMethod.Post, "/api/auth/restablecimiento", new { token = link.GetProperty("hashed_token").GetString(), nuevaContrasena = password }, HttpStatusCode.NoContent);
         return await Login(user.Email, password);
     }
     public async ValueTask DisposeAsync()

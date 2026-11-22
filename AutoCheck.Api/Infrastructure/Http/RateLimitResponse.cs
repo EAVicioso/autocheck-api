@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;

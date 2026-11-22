@@ -35,6 +35,21 @@ function bytes(text) {
   }
   return size;
 }
+function acceptsAssistant(status, body, contingency) {
+  if (!body || Object.keys(body).sort().join(',') !== 'categoria,codigo,respuesta'
+      || typeof body.respuesta !== 'string' || !body.respuesta.trim()) return false;
+  if (contingency) {
+    return status === 503 && body.categoria === 'NO_DETERMINADA'
+      && body.codigo === 'SERVICIO_NO_DISPONIBLE'
+      && body.respuesta === 'El servicio de asistencia no está disponible temporalmente. Intenta de nuevo.';
+  }
+  if (status !== 200) return false;
+  const recognized = ['USO_PLATAFORMA', 'ITV'].includes(body.categoria);
+  return (body.codigo === 'OK' && recognized)
+    || (body.codigo === 'INFORMACION_INSUFICIENTE' && (recognized || body.categoria === 'NO_DETERMINADA'))
+    || (body.codigo === 'FUERA_DE_ALCANCE' && body.categoria === 'FUERA_DE_ALCANCE');
+}
+
 export default function () {
   const record = records[(profile === 'history' ? exec.vu.idInTest : exec.scenario.iterationInTest) % records.length];
   const phase = profile !== 'history' || Date.now() - exec.scenario.startTime >= 60000 ? 'sustained' : 'ramp';
@@ -60,10 +75,7 @@ export default function () {
   if (profile === 'history' && valid) valid = bytes(response.body) <= 100 * 1024 && response.json().items.length <= 20;
   if (profile === 'assistant' || profile === 'contingency') {
     try {
-      const body = response.json();
-      valid = valid && Object.keys(body).sort().join(',') === 'categoria,codigo,respuesta' && typeof body.respuesta === 'string' && body.respuesta.length > 0;
-      if (profile === 'contingency') valid = valid && body.codigo === 'SERVICIO_NO_DISPONIBLE';
-      else valid = valid && body.codigo !== 'SERVICIO_NO_DISPONIBLE';
+      valid = valid && acceptsAssistant(response.status, response.json(), profile === 'contingency');
     } catch (_) { valid = false; }
   }
   duration.add(Date.now() - started, { phase }); failures.add(!valid, { phase }); check(response, { 'PA contract succeeds': () => valid });

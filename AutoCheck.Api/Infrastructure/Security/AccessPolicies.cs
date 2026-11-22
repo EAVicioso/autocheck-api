@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Infrastructure.Security;
 
 public static class AccessPolicies

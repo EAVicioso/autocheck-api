@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1; RD-04, RF-INS-01, RS-03.
 namespace AutoCheck.Api.Infrastructure.Data;
 

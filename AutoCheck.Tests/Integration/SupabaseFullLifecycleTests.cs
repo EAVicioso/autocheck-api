@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -90,7 +92,7 @@ public sealed class SupabaseFullLifecycleTests
         using var publicClient = scenario.Client();
         var verified = await SupabaseScenario.Send(publicClient, HttpMethod.Get, $"/api/certificados/{id}/verificacion?hash={detail.GetProperty("hashManifiesto").GetString()}");
         Assert.Equal(5, verified.EnumerateObject().Count());
-        Assert.Equal("VALIDA", verified.GetProperty("integridad").GetString());
+        Assert.Equal("Aprobado", verified.GetProperty("resultado").GetString());
         _ = await SupabaseScenario.Send(citizen.Client, HttpMethod.Get, $"/api/vehiculos/{vehicle}/historial");
     }
     private static async Task CheckAudit(FixtureUser admin, Guid actor)

@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.AspNetCore.Diagnostics;
 namespace AutoCheck.Api.Infrastructure;
 

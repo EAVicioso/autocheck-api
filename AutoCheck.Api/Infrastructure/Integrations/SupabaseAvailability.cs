@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using MongoDB.Bson;
@@ -16,12 +18,15 @@ public sealed class SupabaseAvailability(HttpClient http, IConfiguration config)
     {
         var url = config["Supabase:Url"];
         var key = config["Supabase:SecretKey"];
-        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(key))
+        if (string.IsNullOrWhiteSpace(key)
+            || !Uri.TryCreate(url, UriKind.Absolute, out var origin)
+            || origin.Scheme != Uri.UriSchemeHttps
+            || origin.UserInfo.Length != 0 || origin.Query.Length != 0 || origin.Fragment.Length != 0)
         {
             throw ApiContract.Unavailable();
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, url.TrimEnd('/') + "/realtime/v1/api/broadcast");
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(origin, "/realtime/v1/api/broadcast"));
         request.Headers.Add("apikey", key);
         if (!key.StartsWith("sb_secret_", StringComparison.Ordinal))
         {

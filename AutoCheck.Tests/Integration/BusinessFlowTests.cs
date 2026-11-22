@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
 using System.Diagnostics;
 using System.Net;
@@ -27,6 +29,7 @@ namespace AutoCheck.Tests.Integration;
 [Trait("Category", "Integration")]
 public partial class BusinessFlowTests : DatabaseTest
 {
+    private static readonly string[] PublicCertificateFields = ["centro", "certificadoId", "emisionUtc", "resultado"];
     [IntegrationFact]
     public async Task PA01RegistrationValidatesAndPreventsDuplicateAccounts()
     {
@@ -372,8 +375,12 @@ public partial class BusinessFlowTests : DatabaseTest
 
         using var anonymous = App.CreateClient();
         var publicData = await Json(await anonymous.GetAsync($"/api/certificados/{certificate.Id}/verificacion?hash={certificate.ManifestHash}"));
-        Assert.Equal(5, publicData.EnumerateObject().Count());
-        Assert.False(publicData.TryGetProperty("inspeccionId", out _));
+        Assert.Equal(PublicCertificateFields,
+            publicData.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await anonymous.GetAsync($"/api/certificados/{certificate.Id}/verificacion?hash=malformado")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await anonymous.GetAsync($"/api/certificados/{Guid.NewGuid()}/verificacion")).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await anonymous.GetAsync($"/api/certificados/{certificate.Id}/verificacion?hash={new string('0', 64)}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Inspector.GetAsync($"/api/certificados/{certificate.Id}/pdf")).StatusCode);
         var history = await Json(await Citizen.GetAsync($"/api/vehiculos/{VehicleId}/historial"));
