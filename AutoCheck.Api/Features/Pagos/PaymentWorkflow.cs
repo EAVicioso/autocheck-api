@@ -22,19 +22,7 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
         await db.LockAsync("user:" + payment.UserId, ct);
         await db.LockAsync("vehicle:" + payment.VehicleId, ct);
         await db.Entry(payment).ReloadAsync(ct);
-        var previous = await db.PaymentEvents.FindAsync([e.EventoId], ct);
-        if (previous is not null)
-        {
-            if (previous.AttemptId != e.IntentoId || previous.Outcome != e.Resultado)
-            {
-                throw ApiContract.Conflict("EVENTO_CONFLICTO", "El identificador de evento ya fue utilizado.");
-            }
-
-            return await State(payment, ct);
-        }
-
-        db.PaymentEvents.Add(new() { Id = e.EventoId, AttemptId = e.IntentoId, Outcome = e.Resultado });
-        if (payment.State == "APROBADO" || payment.ReversalId is not null)
+        if (!await TryRecordEvent(e, ct) || payment.State == "APROBADO" || payment.ReversalId is not null)
         {
             return await State(payment, ct);
         }
@@ -67,8 +55,33 @@ public sealed class PaymentWorkflow(AutoCheckDb db, TimeProvider clock)
         }
 
         db.Audit.Add(new() { At = clock.GetUtcNow(), Operation = payment.ReversalId is null ? "PAGO" : "REVERSION", Entity = payment.Id.ToString(), Outcome = payment.State, Correlation = correlation });
-        db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = payment.CenterId }) });
+        if (payment.State == "APROBADO" || (block?.AttemptId == payment.Id && block.State == "RETENIDO"))
+        {
+            db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = payment.CenterId }) });
+        }
+
         return await State(payment, ct);
+    }
+
+    private async Task<bool> TryRecordEvent(SandboxEvent e, CancellationToken ct)
+    {
+        var inserted = await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO autocheck."PaymentEvent" ("Id", "AttemptId", "Outcome")
+            VALUES ({e.EventoId}, {e.IntentoId}, {e.Resultado})
+            ON CONFLICT ("Id") DO NOTHING
+            """, ct);
+        if (inserted == 1)
+        {
+            return true;
+        }
+
+        var previous = await db.PaymentEvents.AsNoTracking().SingleAsync(x => x.Id == e.EventoId, ct);
+        if (previous.AttemptId != e.IntentoId || previous.Outcome != e.Resultado)
+        {
+            throw ApiContract.Conflict("EVENTO_CONFLICTO", "El identificador de evento ya fue utilizado.");
+        }
+
+        return false;
     }
 
     private void ApplyUnconfirmedResult(PaymentAttempt payment, BookingBlock? block, string outcome)
