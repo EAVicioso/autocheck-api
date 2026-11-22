@@ -1,8 +1,12 @@
+using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AutoCheck.Api.Features.Pagos.IniciarPago;
 using AutoCheck.Api.Infrastructure;
+using AutoCheck.Api.Infrastructure.Data;
+using AutoCheck.Api.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,8 +26,12 @@ public partial class BusinessFlowTests
 
         var hours = new { horarios = new[] { new { dia = 4, aperturaMinutos = 600, cierreMinutos = 660 } } };
         await Json(await Administrator.PutAsJsonAsync(path + "/horarios", hours));
+        await AssertAvailabilityEvents(id, 1);
+        await Json(await Administrator.PutAsJsonAsync(path + "/horarios", hours));
+        await AssertAvailabilityEvents(id, 1);
         var ramp = await Json(await Administrator.PostAsJsonAsync(path + "/rampas",
             new { nombre = "Rampa nueva", activa = true }), HttpStatusCode.Created);
+        await AssertAvailabilityEvents(id, 2);
         var rampId = ramp.GetProperty("id").GetGuid();
         var detail = await Json(await Citizen.GetAsync(path));
         Assert.Equal(rampId, Assert.Single(detail.GetProperty("rampas").EnumerateArray()).GetProperty("id").GetGuid());
@@ -38,20 +46,61 @@ public partial class BusinessFlowTests
         Assert.All(blocks, block => Assert.Equal("LIBRE", block.GetProperty("estado").GetString()));
 
         await Json(await Administrator.PatchAsJsonAsync(path + $"/rampas/{rampId}", new { nombre = "Rampa nueva", activa = false }));
+        await AssertAvailabilityEvents(id, 3);
         var reduced = await Json(await Citizen.GetAsync(path + "/disponibilidad?fecha=2026-11-12"));
         Assert.Empty(reduced.GetProperty("bloques").EnumerateArray());
 
         await Json(await Administrator.PatchAsJsonAsync(path, new { nombre = "Centro nuevo", direccion = "Direccion de prueba", activo = false }));
         using var inactive = await Citizen.GetAsync(path + "/disponibilidad?fecha=2026-11-12");
         Assert.Equal(HttpStatusCode.NotFound, inactive.StatusCode);
+        await AssertAvailabilityEvents(id, 4);
+        var publishedTo = new List<Guid>();
+        App.Availability.OnPublish = publishedTo.Add;
+        for (var i = 0; i < 4; i++)
+        {
+            await DispatchNotification("DISPONIBILIDAD");
+        }
 
+        Assert.Equal(new[] { id, id, id, id }, publishedTo);
+    }
+
+    private async Task AssertAvailabilityEvents(Guid id, int count)
+    {
         var events = await WithDb(db => db.Outbox.Where(x => x.Kind == "DISPONIBILIDAD").Select(x => x.Payload).ToArrayAsync());
-        Assert.Equal(4, events.Length);
+        Assert.Equal(count, events.Length);
         Assert.All(events, payload =>
         {
             using var json = JsonDocument.Parse(payload);
             Assert.Equal(id, json.RootElement.GetProperty("centroId").GetGuid());
         });
+    }
+
+    [IntegrationFact]
+    public async Task PA12aTwoRampsCanConfirmTheSameTimeSlot()
+    {
+        var ramp = await Json(await Administrator.PostAsJsonAsync($"/api/centros/{CenterId}/rampas",
+            new { nombre = "Rampa paralela", activa = true }), HttpStatusCode.Created);
+        var otherRamp = ramp.GetProperty("id").GetGuid();
+        using var otherCitizen = App.CreateClient();
+        var otherVehicle = await AddSectionBCitizen(otherCitizen);
+        var first = await Json(await Start(), HttpStatusCode.Created);
+        var second = await Json(await Send(otherCitizen, HttpMethod.Post, "/api/pagos/intentos",
+            new StartPaymentRequest(otherVehicle, CenterId, otherRamp, Starts, DemoraSegundos: 600), "parallel-ramp"), HttpStatusCode.Created);
+        Assert.Equal("APROBADO", (await Webhook(first.GetProperty("intentoId").GetGuid())).GetProperty("estado").GetString());
+        Assert.Equal("APROBADO", (await Webhook(second.GetProperty("intentoId").GetGuid())).GetProperty("estado").GetString());
+        using var third = await Start();
+        Assert.Equal("BLOQUE_NO_DISPONIBLE", (await Json(third, HttpStatusCode.Conflict)).GetProperty("codigo").GetString());
+
+        var appointments = await WithDb(db => db.Appointments.AsNoTracking().ToListAsync());
+        Assert.Equal(2, appointments.Count);
+        Assert.All(appointments, appointment =>
+        {
+            Assert.Equal("CONFIRMADA", appointment.State);
+            Assert.Equal(CenterId, appointment.CenterId);
+            Assert.Equal(Starts, appointment.Starts);
+        });
+        Assert.Contains(appointments, appointment => appointment.RampId == RampId);
+        Assert.Contains(appointments, appointment => appointment.RampId == otherRamp);
     }
 
     [IntegrationFact]
@@ -74,6 +123,7 @@ public partial class BusinessFlowTests
         Assert.Equal(7, await WithDb(db => db.Schedules.CountAsync()));
         Assert.Equal(1, await WithDb(db => db.Outbox.CountAsync(x => x.Kind == "DISPONIBILIDAD")));
 
+        var (otherCenterId, otherRampId) = await AddSectionBCenter();
         await WithDb(async db =>
         {
             var admin = await db.Users.SingleAsync(x => x.Id == AdminId);
@@ -81,8 +131,19 @@ public partial class BusinessFlowTests
             return await db.SaveChangesAsync();
         });
 
-        using var otherCenter = await Administrator.PutAsJsonAsync($"/api/centros/{Guid.NewGuid()}/horarios", noHours);
+        using var otherCenter = await Administrator.PutAsJsonAsync($"/api/centros/{otherCenterId}/horarios", noHours);
         Assert.Equal(HttpStatusCode.Forbidden, otherCenter.StatusCode);
+        var rampUpdate = new { nombre = "Cambio fuera de alcance", activa = false };
+        using var otherRamp = await Administrator.PatchAsJsonAsync($"/api/centros/{otherCenterId}/rampas/{otherRampId}", rampUpdate);
+        Assert.Equal(HttpStatusCode.Forbidden, otherRamp.StatusCode);
+        using var mismatchedRamp = await Administrator.PatchAsJsonAsync(path + $"/rampas/{otherRampId}", rampUpdate);
+        Assert.Equal(HttpStatusCode.NotFound, mismatchedRamp.StatusCode);
+        using var mismatchedHold = await Send(Citizen, HttpMethod.Post, "/api/pagos/intentos",
+            new StartPaymentRequest(VehicleId, CenterId, otherRampId, Starts, DemoraSegundos: 600), "mismatched-ramp");
+        Assert.Equal(HttpStatusCode.BadRequest, mismatchedHold.StatusCode);
+        Assert.True(await WithDb(db => db.Ramps.Where(x => x.Id == otherRampId).Select(x => x.Active).SingleAsync()));
+        Assert.Equal(1, await WithDb(db => db.Schedules.CountAsync(x => x.CenterId == otherCenterId)));
+        await AssertAvailabilityEvents(CenterId, 1);
     }
 
     [IntegrationFact]
@@ -98,15 +159,19 @@ public partial class BusinessFlowTests
         Assert.Equal(App.Clock.Now.AddSeconds(300), held.GetProperty("expiraUtc").GetDateTimeOffset());
         using var forbidden = await Inspector.DeleteAsync(path);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
-        using var first = await Citizen.DeleteAsync(path);
-        using var replay = await Citizen.DeleteAsync(path);
+        var releases = await Task.WhenAll(Citizen.DeleteAsync(path), Citizen.DeleteAsync(path));
+        using var first = releases[0];
+        using var replay = releases[1];
         Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, replay.StatusCode);
         var released = FindSlot(await Json(await Citizen.GetAsync(availability)));
         Assert.Equal("LIBRE", released.GetProperty("estado").GetString());
         Assert.Equal(JsonValueKind.Null, released.GetProperty("expiraUtc").ValueKind);
-        Assert.Equal(2, await WithDb(db => db.Outbox.CountAsync(x => x.Kind == "DISPONIBILIDAD")));
+        await AssertAvailabilityEvents(CenterId, 2);
 
+        var replacement = await Json(await Start(), HttpStatusCode.Created);
+        using var staleRelease = await Citizen.DeleteAsync(path);
+        Assert.Equal(HttpStatusCode.NoContent, staleRelease.StatusCode);
         var paidLate = await Webhook(attempt);
         Assert.Equal("REVERTIDO", paidLate.GetProperty("estado").GetString());
         var status = await Json(await Citizen.GetAsync($"/api/pagos/intentos/{attempt}"));
@@ -114,26 +179,106 @@ public partial class BusinessFlowTests
         using var hidden = await Inspector.GetAsync($"/api/pagos/intentos/{attempt}");
         Assert.Equal(HttpStatusCode.Forbidden, hidden.StatusCode);
         Assert.Equal(0, await WithDb(db => db.Appointments.CountAsync()));
+        Assert.Equal(replacement.GetProperty("intentoId").GetGuid(), await WithDb(db => db.Blocks.Select(x => x.AttemptId).SingleAsync()));
+        Assert.Equal("RETENIDO", FindSlot(await Json(await Citizen.GetAsync(availability))).GetProperty("estado").GetString());
+        await AssertAvailabilityEvents(CenterId, 3);
     }
 
     [IntegrationFact]
-    public async Task PA04ApprovalAtSlotStartReversesEvenWhileHoldIsUnexpired()
+    public async Task PA03bApprovalAt299SecondsConfirmsOnceEvenAfterSlotStarts()
     {
         var slot = App.Clock.Now.AddMinutes(30);
         App.Clock.Advance(TimeSpan.FromMinutes(29));
         var hold = await Json(await Send(Citizen, HttpMethod.Post, "/api/pagos/intentos",
             new StartPaymentRequest(VehicleId, CenterId, RampId, slot, DemoraSegundos: 600), "same-minute"), HttpStatusCode.Created);
-        App.Clock.Advance(TimeSpan.FromSeconds(60));
+        App.Clock.Advance(TimeSpan.FromSeconds(299));
 
-        Assert.True(hold.GetProperty("expiraUtc").GetDateTimeOffset() > App.Clock.Now);
-        var result = await Webhook(hold.GetProperty("intentoId").GetGuid());
-        Assert.Equal("REVERTIDO", result.GetProperty("estado").GetString());
-        Assert.Equal(0, await WithDb(db => db.Appointments.CountAsync()));
-        Assert.Equal(0, await WithDb(db => db.Blocks.CountAsync()));
+        Assert.True(slot < App.Clock.Now);
+        Assert.Equal(App.Clock.Now.AddSeconds(1), hold.GetProperty("expiraUtc").GetDateTimeOffset());
+        var attempt = hold.GetProperty("intentoId").GetGuid();
+        var result = await Webhook(attempt, eventId: "approval-at-299");
+        Assert.Equal("APROBADO", result.GetProperty("estado").GetString());
+        App.Clock.Advance(TimeSpan.FromSeconds(2));
+        var replay = await Webhook(attempt, eventId: "approval-at-299");
+        Assert.Equal(result.GetProperty("citaId").GetGuid(), replay.GetProperty("citaId").GetGuid());
+        Assert.Equal(slot, await WithDb(db => db.Appointments.Select(x => x.Starts).SingleAsync()));
+        Assert.Equal("CONFIRMADO", await WithDb(db => db.Blocks.Select(x => x.State).SingleAsync()));
     }
 
     [IntegrationFact]
     public async Task PA04ConcurrentEventIdReuseAcrossCentersConfirmsOnlyOnePayment()
+    {
+        var (otherCenter, otherRamp) = await AddSectionBCenter();
+        using var otherCitizen = App.CreateClient();
+        var otherVehicle = await AddSectionBCitizen(otherCitizen);
+        var first = await Json(await Start(), HttpStatusCode.Created);
+        var second = await Json(await Send(otherCitizen, HttpMethod.Post, "/api/pagos/intentos",
+            new StartPaymentRequest(otherVehicle, otherCenter, otherRamp, Starts, DemoraSegundos: 600), "other-center"), HttpStatusCode.Created);
+        var firstAttempt = first.GetProperty("intentoId").GetGuid();
+        var secondAttempt = second.GetProperty("intentoId").GetGuid();
+        const string eventId = "shared-provider-event";
+
+        using var scope = App.Services.CreateScope();
+        var locker = scope.ServiceProvider.GetRequiredService<AutoCheckDb>();
+        await using var transaction = await locker.Database.BeginTransactionAsync();
+        await locker.Database.ExecuteSqlRawAsync("""LOCK TABLE autocheck."PaymentEvent" IN SHARE MODE""");
+        var firstApproval = SendWebhook(firstAttempt, "APROBADO", eventId);
+        var secondApproval = SendWebhook(secondAttempt, "APROBADO", eventId);
+        bool bothWaiting;
+        try
+        {
+            bothWaiting = await WaitForPaymentEventWriters();
+        }
+        finally
+        {
+            await transaction.RollbackAsync();
+        }
+
+        await Task.WhenAll(firstApproval, secondApproval);
+        using var firstResponse = await firstApproval;
+        using var secondResponse = await secondApproval;
+        Assert.True(bothWaiting, "Both webhooks must reach the PostgreSQL write before either can confirm.");
+        var responses = new[] { firstResponse, secondResponse };
+        var approval = await Json(Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK));
+        Assert.Equal("APROBADO", approval.GetProperty("estado").GetString());
+        var winner = approval.GetProperty("intentoId").GetGuid();
+        var loser = winner == firstAttempt ? secondAttempt : firstAttempt;
+        var appointment = approval.GetProperty("citaId").GetGuid();
+        var conflict = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        Assert.Equal("EVENTO_CONFLICTO", (await Json(conflict, HttpStatusCode.Conflict)).GetProperty("codigo").GetString());
+        Assert.Equal(appointment, (await Webhook(winner, eventId: eventId)).GetProperty("citaId").GetGuid());
+        using var rejectedReplay = await SendWebhook(loser, "APROBADO", eventId);
+        Assert.Equal("EVENTO_CONFLICTO", (await Json(rejectedReplay, HttpStatusCode.Conflict)).GetProperty("codigo").GetString());
+        Assert.Equal(winner, await WithDb(db => db.PaymentEvents.Select(x => x.AttemptId).SingleAsync()));
+        Assert.Equal(appointment, await WithDb(db => db.Appointments.Select(x => x.Id).SingleAsync()));
+        Assert.Equal("PENDIENTE", await WithDb(db => db.Payments.Where(x => x.Id == loser).Select(x => x.State).SingleAsync()));
+        Assert.Equal("RETENIDO", await WithDb(db => db.Blocks.Where(x => x.AttemptId == loser).Select(x => x.State).SingleAsync()));
+        Assert.Equal(1, await WithDb(db => db.Outbox.CountAsync(x => x.Kind == "CITA_CONFIRMADA")));
+    }
+
+    private async Task<bool> WaitForPaymentEventWriters()
+    {
+        var timeout = Stopwatch.StartNew();
+        while (timeout.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            var waiters = await WithDb(db => db.Database.SqlQueryRaw<int>("""
+                SELECT count(*)::int AS "Value" FROM pg_locks
+                WHERE relation = 'autocheck."PaymentEvent"'::regclass
+                  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+                  AND mode = 'RowExclusiveLock' AND NOT granted
+                """).SingleAsync());
+            if (waiters == 2)
+            {
+                return true;
+            }
+
+            await Task.Delay(25);
+        }
+
+        return false;
+    }
+
+    private async Task<(Guid Center, Guid Ramp)> AddSectionBCenter()
     {
         var otherCenter = Guid.NewGuid();
         var otherRamp = Guid.NewGuid();
@@ -145,22 +290,29 @@ public partial class BusinessFlowTests
             return await db.SaveChangesAsync();
         });
 
-        var first = await Json(await Start(), HttpStatusCode.Created);
-        var second = await Json(await Send(Citizen, HttpMethod.Post, "/api/pagos/intentos",
-            new StartPaymentRequest(VehicleId, otherCenter, otherRamp, Starts.AddMinutes(30), DemoraSegundos: 600), "other-center"), HttpStatusCode.Created);
-        const string eventId = "shared-provider-event";
-        var firstApproval = SendWebhook(first.GetProperty("intentoId").GetGuid(), "APROBADO", eventId);
-        var secondApproval = SendWebhook(second.GetProperty("intentoId").GetGuid(), "APROBADO", eventId);
-        await Task.WhenAll(firstApproval, secondApproval);
-        using var firstResponse = await firstApproval;
-        using var secondResponse = await secondApproval;
+        return (otherCenter, otherRamp);
+    }
 
-        var responses = new[] { firstResponse, secondResponse };
-        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
-        var conflict = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
-        Assert.Equal("EVENTO_CONFLICTO", (await Json(conflict, HttpStatusCode.Conflict)).GetProperty("codigo").GetString());
-        Assert.Equal(1, await WithDb(db => db.PaymentEvents.CountAsync()));
-        Assert.Equal(1, await WithDb(db => db.Appointments.CountAsync()));
+    private async Task<Guid> AddSectionBCitizen(HttpClient client)
+    {
+        var authId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var vehicleId = Guid.NewGuid();
+        await WithDb(async db =>
+        {
+            var user = new UserAccount { AuthId = authId, Email = "otro-ciudadano@example.test", Role = Roles.Citizen };
+            var sample = await db.Vehicles.AsNoTracking().SingleAsync(x => x.Id == VehicleId);
+            db.Users.Add(user);
+            db.Sessions.Add(new() { Id = sessionId, UserId = user.Id, LastActivity = App.Clock.Now });
+            db.Vehicles.Add(new()
+            {
+                Id = vehicleId, OwnerId = user.Id, Plate = "A654321", Vin = "987654321ABCDEFGH",
+                ModelId = sample.ModelId, ColorId = sample.ColorId, Year = sample.Year
+            });
+            return await db.SaveChangesAsync();
+        });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", FakeIdentity.Token(authId, sessionId));
+        return vehicleId;
     }
 
     [IntegrationFact]
@@ -177,6 +329,8 @@ public partial class BusinessFlowTests
         Assert.Equal(HttpStatusCode.Forbidden, unassigned.StatusCode);
 
         await Json(await Send(Citizen, HttpMethod.Post, path + "/cancelacion", new { motivo = "Reagendar" }, "cancel"));
+        var sends = new List<(Guid Appointment, string Kind, Guid Delivery)>();
+        App.Notifications.OnSend = (item, kind, delivery) => sends.Add((item.Id, kind, delivery));
         App.Notifications.Fail = true;
         await DispatchNotification("CITA_CONFIRMADA");
         await DispatchNotification("CITA_CANCELADA");
@@ -192,6 +346,9 @@ public partial class BusinessFlowTests
         var delivered = await WithDb(db => db.Outbox.AsNoTracking().SingleAsync(x => x.Kind == "CITA_CANCELADA"));
         Assert.Equal(pending.Id, delivered.Id);
         Assert.NotNull(delivered.Completed);
+        Assert.Collection(sends,
+            send => Assert.Equal((appointment, "CITA_CANCELADA", pending.Id), send),
+            send => Assert.Equal((appointment, "CITA_CANCELADA", pending.Id), send));
         Assert.Equal("CANCELADA", (await Json(await Citizen.GetAsync(path))).GetProperty("estado").GetString());
         await Json(await Start(), HttpStatusCode.Created);
     }

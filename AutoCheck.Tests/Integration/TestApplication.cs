@@ -138,13 +138,24 @@ public sealed class FakeArchive : IInspectionArchive
 public sealed class FakeNotifications : IAppointmentNotifications
 {
     public bool Fail { get; set; }
+    public Action<Appointment, string, Guid>? OnSend { get; set; }
 
-    public Task Send(Appointment appointment, string kind, Guid deliveryId, CancellationToken ct) => Fail ? Task.FromException(new HttpRequestException()) : Task.CompletedTask;
+    public Task Send(Appointment appointment, string kind, Guid deliveryId, CancellationToken ct)
+    {
+        OnSend?.Invoke(appointment, kind, deliveryId);
+        return Fail ? Task.FromException(new HttpRequestException()) : Task.CompletedTask;
+    }
 }
 
 public sealed class FakeAvailability : IAvailabilityPublisher
 {
-    public Task Publish(Guid centerId, CancellationToken ct) => Task.CompletedTask;
+    public Action<Guid>? OnPublish { get; set; }
+
+    public Task Publish(Guid centerId, CancellationToken ct)
+    {
+        OnPublish?.Invoke(centerId);
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeAssistance : IAssistanceProvider
@@ -176,10 +187,21 @@ public sealed class TestApplication(string connection, bool workers = false) : W
     public FakeIdentity Identity { get; } = new();
     public FakeArchive Archive { get; } = new();
     public FakeNotifications Notifications { get; } = new();
+    public FakeAvailability Availability { get; } = new();
     public FakeAssistance Assistance { get; } = new();
     public ResetConnectionFailure ResetConnection { get; } = new();
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseEnvironment("Testing").ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Postgres"] = connection, ["Workers:Enabled"] = workers.ToString(), ["Testing:JwtKey"] = FakeIdentity.JwtKey, ["Supabase:Url"] = "https://example.test", ["Sandbox:WebhookSecret"] = "sandbox-for-isolated-tests-only-0123456789", ["Certificates:PfxPath"] = PfxPath, ["Certificates:PublicBaseUrl"] = "https://example.test" })).ConfigureServices(s =>
+    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.UseEnvironment("Testing").ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["ConnectionStrings:Postgres"] = connection,
+        ["Workers:Enabled"] = workers.ToString(),
+        ["Testing:JwtKey"] = FakeIdentity.JwtKey,
+        ["Supabase:Url"] = "https://example.test",
+        ["Sandbox:WebhookSecret"] = "sandbox-for-isolated-tests-only-0123456789",
+        ["Certificates:PfxPath"] = PfxPath,
+        ["Certificates:PfxPassword"] = null,
+        ["Certificates:PublicBaseUrl"] = "https://example.test"
+    })).ConfigureServices(s =>
     {
         s.AddDbContext<AutoCheckDb>(options => options.AddInterceptors(ResetConnection));
         s.RemoveAll<TimeProvider>();
@@ -191,7 +213,7 @@ public sealed class TestApplication(string connection, bool workers = false) : W
         s.RemoveAll<IAppointmentNotifications>();
         s.AddSingleton<IAppointmentNotifications>(Notifications);
         s.RemoveAll<IAvailabilityPublisher>();
-        s.AddSingleton<IAvailabilityPublisher, FakeAvailability>();
+        s.AddSingleton<IAvailabilityPublisher>(Availability);
         s.RemoveAll<IAssistanceProvider>();
         s.AddSingleton<IAssistanceProvider>(Assistance);
     });
