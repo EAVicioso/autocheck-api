@@ -104,6 +104,29 @@ public partial class BusinessFlowTests
     }
 
     [IntegrationFact]
+    public async Task PA12ScheduleReplaySucceedsWithAnActiveHold()
+    {
+        var path = $"/api/centros/{CenterId}/horarios";
+        var hours = new { horarios = new[] { new { dia = (int)Starts.DayOfWeek, aperturaMinutos = 600, cierreMinutos = 660 } } };
+        var saved = await Json(await Administrator.PutAsJsonAsync(path, hours));
+        var hold = await Json(await Start(), HttpStatusCode.Created);
+        await AssertAvailabilityEvents(CenterId, 2);
+
+        var replay = await Json(await Administrator.PutAsJsonAsync(path, hours));
+        Assert.Equal(saved.GetRawText(), replay.GetRawText());
+        var changed = new { horarios = Array.Empty<object>() };
+        using var conflict = await Administrator.PutAsJsonAsync(path, changed);
+        Assert.Equal("HORARIO_CON_COMPROMISOS", (await Json(conflict, HttpStatusCode.Conflict)).GetProperty("codigo").GetString());
+
+        var block = await WithDb(db => db.Blocks.AsNoTracking().SingleAsync());
+        Assert.Equal("RETENIDO", block.State);
+        Assert.Equal(hold.GetProperty("intentoId").GetGuid(), block.AttemptId);
+        Assert.Equal(hold.GetProperty("expiraUtc").GetDateTimeOffset(), block.Expires);
+        Assert.Equal(1, await WithDb(db => db.Schedules.CountAsync()));
+        await AssertAvailabilityEvents(CenterId, 2);
+    }
+
+    [IntegrationFact]
     public async Task PA12OperationsRespectCenterScopeAndPreserveCommitments()
     {
         var path = $"/api/centros/{CenterId}";

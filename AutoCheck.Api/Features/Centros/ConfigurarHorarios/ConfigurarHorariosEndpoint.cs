@@ -17,21 +17,22 @@ public static class ConfigurarHorariosEndpoint
                 throw ApiContract.Missing();
             }
 
+            var schedules = db.Schedules.Where(x => x.CenterId == id);
+            var current = await schedules.OrderBy(x => x.Day).Select(x => new ScheduleEntry(x.Day, x.Opens, x.Closes)).ToListAsync(ct);
+            if (current.SequenceEqual(r.Horarios.OrderBy(x => x.Dia)))
+            {
+                return ApiReply.Ok(r);
+            }
+
             var now = clock.GetUtcNow();
             if (await HasCommitments(db, id, null, now, ct))
             {
                 throw ApiContract.Conflict("HORARIO_CON_COMPROMISOS", "Resuelve las citas y retenciones antes de cambiar el horario.");
             }
 
-            var schedules = db.Schedules.Where(x => x.CenterId == id);
-            var current = await schedules.OrderBy(x => x.Day).Select(x => new ScheduleEntry(x.Day, x.Opens, x.Closes)).ToListAsync(ct);
-            if (!current.SequenceEqual(r.Horarios.OrderBy(x => x.Dia)))
-            {
-                await schedules.ExecuteDeleteAsync(ct);
-                db.Schedules.AddRange(r.Horarios.Select(x => new CenterSchedule { CenterId = id, Day = x.Dia, Opens = x.AperturaMinutos, Closes = x.CierreMinutos }));
-                QueueAvailability(db, id, now);
-            }
-
+            await schedules.ExecuteDeleteAsync(ct);
+            db.Schedules.AddRange(r.Horarios.Select(x => new CenterSchedule { CenterId = id, Day = x.Dia, Opens = x.AperturaMinutos, Closes = x.CierreMinutos }));
+            QueueAvailability(db, id, now);
             return ApiReply.Ok(r);
         })).Interactive().Document<ScheduleRequest>("ConfigurarHorarios", "RAE-01 / PA-12b,c").Validated<ScheduleRequest>(v =>
         {
