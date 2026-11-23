@@ -63,7 +63,7 @@ Las pruebas comprueban primero que `autocheck_api` puede conectarse y que no hay
 1. Registro/login reales y rechazo de escalación por metadata; perfil y catálogos de usuarios/roles/permisos.
 2. Centro/rampa/horarios sintéticos propios, asignación de inspector y CRUD de vehículo.
 3. Pago simulado mediante webhook HMAC, inspección cerrada aprobada y emisión por outbox filtrada por su aggregate.
-4. Listado/detalle, descarga PDF repetida, SHA-256, firma CMS independiente, QR de cinco campos e historial.
+4. Listado/detalle, descarga PDF repetida, SHA-256, firma CMS independiente, QR de cuatro campos e historial.
 5. Auditoría con cursor, actividad, refresh, recuperación/reset, revocación de JWT anteriores, logout y archivado lógico.
 
 El despachador filtra por tipo y agregado sintético. Con `AUTOCHECK_ATLAS_E2E=true` y `MongoDb:ConnectionString` autorizado para `ClusterAC`, el harness también entrega `COPIA_MONGO` y compara el documento de Atlas con el cierre de PostgreSQL por ObjectId, resultado, versión de reglas y conteos. Al finalizar, bloquea las identidades nuevas en Auth, inactiva sus usuarios y sesiones locales y retira únicamente sus mensajes técnicos pendientes. Conserva cierres, certificados y auditorías. Los correos de registro y recuperación se dirigen al buzón sintético.

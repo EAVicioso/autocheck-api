@@ -13,6 +13,8 @@ namespace AutoCheck.Tests.Integration;
 [Trait("Category", "SupabaseE2E")]
 public sealed class SupabaseFullLifecycleTests
 {
+    private static readonly string[] PublicCertificateFields = ["centro", "certificadoId", "emisionUtc", "resultado"];
+
     [SupabaseFact]
     public async Task SixModulesUseRealAuthHttpPersistenceAndSignedPdf()
     {
@@ -91,7 +93,7 @@ public sealed class SupabaseFullLifecycleTests
         Assert.Equal(bytes, await repeat.Content.ReadAsByteArrayAsync());
         using var publicClient = scenario.Client();
         var verified = await SupabaseScenario.Send(publicClient, HttpMethod.Get, $"/api/certificados/{id}/verificacion?hash={detail.GetProperty("hashManifiesto").GetString()}");
-        Assert.Equal(5, verified.EnumerateObject().Count());
+        Assert.Equal(PublicCertificateFields, verified.EnumerateObject().Select(field => field.Name).Order(StringComparer.Ordinal));
         Assert.Equal("Aprobado", verified.GetProperty("resultado").GetString());
         _ = await SupabaseScenario.Send(citizen.Client, HttpMethod.Get, $"/api/vehiculos/{vehicle}/historial");
     }
