@@ -52,7 +52,7 @@ La primera cuenta administrativa se vincula a una identidad **ya creada y verifi
 | `MongoDb__ConnectionString` | Copia asíncrona en `AutoCheckReports.Reports`. |
 | `Smtp__Host`, `Smtp__Port`, `Smtp__Transport` | Servidor SMTP con STARTTLS obligatorio o TLS directo. |
 | `Smtp__Username`, `Smtp__Password`, `Smtp__From`, `Smtp__SenderName` | Credencial Mail Send y remitente verificado para confirmaciones/cancelaciones; ver guía SMTP. |
-| `Gemini__ApiKey`, `Gemini__Model` | Asistencia; modelo predeterminado `gemini-2.5-flash`. |
+| `Gemini__ApiKey`, `Gemini__Model` | Asistencia. Modelo predeterminado `gemini-3.5-flash-lite` con límites compartidos de 15 RPM, 250 000 TPM de entrada estimados y 500 RPD. |
 | `Certificates__PfxPath`, `Certificates__PfxPassword` | Clave privada académica montada fuera de la imagen. |
 | `Certificates__PublicBaseUrl` | Base HTTPS de la API pública para los QR. |
 | `Sandbox__WebhookSecret` | Secreto de al menos 32 caracteres para HMAC-SHA256 del cuerpo UTF-8 exacto. |

@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Features.Auth.RegistrarActividad;
 
 public sealed class Data(AutoCheckDb db, Mutation mutation, AppActor actor, TimeProvider clock, IHttpContextAccessor accessor) : IData

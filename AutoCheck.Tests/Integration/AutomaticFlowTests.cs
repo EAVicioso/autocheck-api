@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1. Real background delivery, isolated database, synthetic providers.
 using System.Diagnostics;
 using System.Net;

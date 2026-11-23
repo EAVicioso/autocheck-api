@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1; CU-05 / PA-05. Version 1.0; history: Git.
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;

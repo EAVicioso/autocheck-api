@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using AutoCheck.Api.Features.Auth.Common;
 using static AutoCheck.Api.Features.Auth.Common.AuthSupport;

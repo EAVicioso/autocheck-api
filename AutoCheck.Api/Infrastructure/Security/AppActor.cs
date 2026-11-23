@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1; 6.2.1.1, RS-10.
 using System.Security.Claims;
 
@@ -36,6 +38,12 @@ public sealed class AppActor
 
     public async Task RevalidateUserManagement(AutoCheckDb db, TimeProvider clock, CancellationToken ct)
     {
+        await RevalidateAuthority(db, clock, ct);
+        RequirePermission(Permissions.Users);
+    }
+
+    public async Task RevalidateAuthority(AutoCheckDb db, TimeProvider clock, CancellationToken ct)
+    {
         var identity = await (
             from session in db.Sessions.AsNoTracking()
             join user in db.Users.AsNoTracking() on session.UserId equals user.Id
@@ -48,7 +56,6 @@ public sealed class AppActor
         }
 
         SetAuthority(identity.User);
-        RequirePermission(Permissions.Users);
     }
 
     internal void SetAuthority(UserAccount user)

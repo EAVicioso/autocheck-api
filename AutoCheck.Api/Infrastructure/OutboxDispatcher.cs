@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1; PA-04/05/06/13. At-least-once delivery.
 using AutoCheck.Api.Features.Certificados;
 using AutoCheck.Api.Features.Certificados.Common;

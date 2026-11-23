@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Centros.Common;
 using static AutoCheck.Api.Features.Centros.Common.CenterSupport;
 
@@ -9,9 +11,7 @@ public static class ActualizarCentroEndpoint
     {
         CenterValidation(endpoints.MapPatch("/{id:guid}", async (Guid id, CenterRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
         {
-            actor.RequirePermission(Permissions.Centers);
-            actor.RequireCenter(id);
-            await db.LockAsync("center:" + id, ct);
+            await RequireManagement(db, actor, clock, id, ct);
             var c = await db.Centers.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw ApiContract.Missing();
             var now = clock.GetUtcNow();
             if (!r.Activo && await HasCommitments(db, id, null, now, ct))

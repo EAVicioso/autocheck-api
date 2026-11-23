@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Globalization;
 namespace AutoCheck.Api.Infrastructure.Security;
 // Independent scope: denied transactions never erase security evidence.

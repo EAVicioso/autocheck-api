@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Infrastructure.Data;
 // Explicit operator command, never an HTTP endpoint. All probe writes roll back.
 public static class DatabaseConnectivity

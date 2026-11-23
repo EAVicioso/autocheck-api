@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1; IS-01, RD-11.
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
@@ -10,6 +12,10 @@ public sealed record ProviderSession(Guid AuthId, Guid SessionId, string AccessT
 {
     public override string ToString() => "ProviderSession [REDACTADO]";
 }
+public sealed record ProviderRecovery(Guid AuthId, string AccessToken)
+{
+    public override string ToString() => "ProviderRecovery [REDACTADO]";
+}
 public sealed record ProviderRegistration(Guid AuthId, bool NeedsConfirmation);
 public interface IIdentityProvider
 {
@@ -17,7 +23,7 @@ public interface IIdentityProvider
     Task<ProviderSession?> Login(string email, string password, CancellationToken ct);
     Task<ProviderSession?> Refresh(string refreshToken, CancellationToken ct);
     Task Recover(string email, CancellationToken ct);
-    Task<Guid> ValidateRecovery(string recoveryToken, CancellationToken ct);
+    Task<ProviderRecovery> ValidateRecovery(string tokenHash, CancellationToken ct);
     Task<Guid> Reset(string recoveryToken, string password, CancellationToken ct);
     Task Logout(string accessToken, CancellationToken ct);
 }
@@ -60,7 +66,23 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         var root = json.RootElement;
         var user = root.TryGetProperty("user", out var nested) ? nested : root;
-        return new(user.GetProperty("id").GetGuid(), !root.TryGetProperty("access_token", out _));
+        if (user.ValueKind != JsonValueKind.Object
+            || !user.TryGetProperty("identities", out var identities)
+            || identities.ValueKind != JsonValueKind.Array
+            || !user.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String
+            || !id.TryGetGuid(out var authId))
+        {
+            throw ApiContract.Unavailable();
+        }
+
+        if (identities.GetArrayLength() == 0)
+        {
+            throw ApiContract.Conflict(ApiErrorCode.CorreoExistente, "El correo ya está registrado.");
+        }
+
+        var needsConfirmation = !root.TryGetProperty("access_token", out var access)
+            || access.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(access.GetString());
+        return new(authId, needsConfirmation);
     }
 
     public Task<ProviderSession?> Login(string email, string password, CancellationToken ct) => Tokens("password", new { email, password }, ct);
@@ -111,10 +133,10 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
         return result.RootElement.GetProperty("id").GetGuid();
     }
 
-    public async Task<Guid> ValidateRecovery(string recoveryToken, CancellationToken ct)
+    public async Task<ProviderRecovery> ValidateRecovery(string tokenHash, CancellationToken ct)
     {
-        // GET /user validates the bearer token at Auth without changing the password.
-        using var response = await Send(HttpMethod.Get, "user", null, ct, recoveryToken);
+        // Auth consumes the email proof before a password-changing operation can begin.
+        using var response = await Send(HttpMethod.Post, "verify", new { token_hash = tokenHash, type = "recovery" }, ct);
         if ((int)response.StatusCode is 400 or 401 or 403 or 404 or 422)
         {
             throw new ApiException(401, "RECUPERACION_INVALIDA", "El enlace de recuperación no es válido.");
@@ -124,7 +146,17 @@ public sealed class SupabaseIdentity(HttpClient http, IConfiguration configurati
             throw ApiContract.Unavailable();
         }
         using var result = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        return result.RootElement.GetProperty("id").GetGuid();
+        var root = result.RootElement;
+        if (!root.TryGetProperty("user", out var user) || user.ValueKind != JsonValueKind.Object
+            || !user.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String
+            || !id.TryGetGuid(out var authId)
+            || !root.TryGetProperty("access_token", out var token) || token.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(token.GetString()))
+        {
+            throw ApiContract.Unavailable();
+        }
+
+        return new(authId, token.GetString()!);
     }
 
     public async Task Logout(string accessToken, CancellationToken ct)

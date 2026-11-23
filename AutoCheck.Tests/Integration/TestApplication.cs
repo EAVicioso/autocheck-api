@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
@@ -79,13 +81,13 @@ public sealed class FakeIdentity : IIdentityProvider
 
     public Task<ProviderSession?> Refresh(string refreshToken, CancellationToken ct) => Task.FromResult<ProviderSession?>(null);
     public Task Recover(string email, CancellationToken ct) => Task.CompletedTask;
-    public Task<Guid> ValidateRecovery(string recoveryToken, CancellationToken ct)
+    public Task<ProviderRecovery> ValidateRecovery(string tokenHash, CancellationToken ct)
     {
-        if (!Accounts.TryGetValue(recoveryToken, out var account))
+        if (!Accounts.TryGetValue(tokenHash, out var account))
         {
             throw new ApiException(401, "RECUPERACION_INVALIDA", "Token sintético inválido.");
         }
-        return Task.FromResult(account.Id);
+        return Task.FromResult(new ProviderRecovery(account.Id, tokenHash));
     }
     public async Task<Guid> Reset(string recoveryToken, string password, CancellationToken ct)
     {

@@ -9,4 +9,8 @@ do $verify$ begin
  if not exists (select 1 from autocheck."AuditEvent" where "Id"='30000000-0000-0000-0000-000000000009' and "Outcome"='CERRADA') then
    raise exception 'Upgrade changed or lost audit evidence';
  end if;
+ if not exists (select 1 from autocheck."PaymentEvent" where "Id"='upgrade-approval'
+     and "AttemptId"='30000000-0000-0000-0000-000000000006' and "Outcome"='APROBADO' and "ResponseJson" is null) then
+   raise exception 'Upgrade changed or lost a legacy payment receipt';
+ end if;
 end $verify$;

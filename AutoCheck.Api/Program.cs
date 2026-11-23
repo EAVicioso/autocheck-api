@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1. Composition root; business rules live in slices.
 using System.Security.Authentication;
 using System.Text;
@@ -25,6 +27,7 @@ using AutoCheck.Api.Features.Vehiculos;
 using AutoCheck.Api.Features.Vehiculos.Common;
 using MailKit.Net.Smtp;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -33,6 +36,16 @@ using Scalar.AspNetCore;
 var migrate = args.Contains("--migrate");
 var builder = WebApplication.CreateBuilder(args.Where(argument => !DatabaseCommands.IsCommand(argument) && argument != "--check-smtp").ToArray());
 builder.Services.AddProblemDetails();
+builder.Services.AddRequestTimeouts(options => options.AddPolicy(AssistanceSupport.TimeoutPolicy, new RequestTimeoutPolicy
+{
+    Timeout = TimeSpan.FromMilliseconds(2500),
+    TimeoutStatusCode = StatusCodes.Status503ServiceUnavailable,
+    WriteTimeoutResponse = async context =>
+    {
+        using var responseBudget = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+        await context.Response.WriteAsJsonAsync(AssistanceSupport.Unavailable, cancellationToken: responseBudget.Token);
+    }
+}));
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi(o => o.AddBearerContracts());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
@@ -62,14 +75,26 @@ builder.Services.AddScoped<OutboxDispatcher>();
 builder.Services.AddScoped<ReportConsolidator>();
 builder.Services.AddHostedService<BackgroundDelivery>();
 builder.Services.AddHttpClient<IIdentityProvider, SupabaseIdentity>(c => c.Timeout = TimeSpan.FromSeconds(5));
-builder.Services.AddHttpClient<IAssistanceProvider, GeminiAssistance>(c => c.Timeout = TimeSpan.FromSeconds(2));
-builder.Services.AddHttpClient<IAvailabilityPublisher, SupabaseAvailability>(c => c.Timeout = TimeSpan.FromSeconds(2));
+builder.Services.AddScoped<IGeminiQuota, GeminiQuota>();
+builder.Services.AddHttpClient<IAssistanceProvider, GeminiAssistance>(c => c.Timeout = TimeSpan.FromSeconds(2))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .RedactLoggedHeaders(["x-goog-api-key"]);
+builder.Services.AddHttpClient<IAvailabilityPublisher, SupabaseAvailability>(c => c.Timeout = TimeSpan.FromSeconds(2))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        AllowAutoRedirect = false,
+        SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+    });
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 128 * 1024);
 builder.Services.AddCors(o => o.AddPolicy("frontend", p => p.WithOrigins((builder.Configuration["AllowedOrigins"] ?? "http://localhost:3000").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
     o.MapInboundClaims = false;
-    o.Events = new JwtBearerEvents { OnTokenValidated = TransportClaims.Validate };
+    o.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = SupabaseJwks.WaitForConfiguration,
+        OnTokenValidated = TransportClaims.Validate
+    };
     var issuer = (builder.Configuration["Supabase:Url"] ?? "https://unconfigured.invalid").TrimEnd('/') + "/auth/v1";
     o.TokenValidationParameters = new TokenValidationParameters
     {
@@ -132,6 +157,7 @@ app.UseStatusCodePages(async context =>
     }
 });
 app.UseCors("frontend");
+app.UseRequestTimeouts();
 app.UseAuthentication();
 app.UseMiddleware<SessionGuard>();
 app.UseAuthorization();

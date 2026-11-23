@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Citas.Common;
 using static AutoCheck.Api.Features.Citas.Common.AppointmentSupport;
 
@@ -7,13 +9,20 @@ public static class AsignarInspectorEndpoint
 {
     public static void MapAsignarInspector(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPut("/{id:guid}/inspector", async (Guid id, AssignInspectorRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation) => await mutation.Run(h, r, async ct =>
+        endpoints.MapPut("/{id:guid}/inspector", async (Guid id, AssignInspectorRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
         {
             actor.RequirePermission(Permissions.Centers);
             var a = await db.Appointments.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw ApiContract.Missing();
             actor.RequireCenter(a.CenterId);
             await db.LockAsync("center:" + a.CenterId, ct);
-            await db.LockAsync("user:" + r.InspectorId, ct);
+            foreach (var userId in new[] { actor.Id, r.InspectorId }.Distinct().Order())
+            {
+                await db.LockAsync("user:" + userId, ct);
+            }
+
+            await actor.RevalidateAuthority(db, clock, ct);
+            actor.RequirePermission(Permissions.Centers);
+            actor.RequireCenter(a.CenterId);
             await db.Entry(a).ReloadAsync(ct);
             if (a.State != "CONFIRMADA" || await db.Inspections.AnyAsync(x => x.AppointmentId == id, ct))
             {

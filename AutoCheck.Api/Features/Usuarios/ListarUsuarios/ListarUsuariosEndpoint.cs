@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using AutoCheck.Api.Features.Usuarios.Common;
 namespace AutoCheck.Api.Features.Usuarios.ListarUsuarios;

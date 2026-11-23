@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Centros.Common;
 using static AutoCheck.Api.Features.Centros.Common.CenterSupport;
 
@@ -9,9 +11,7 @@ public static class ConfigurarHorariosEndpoint
     {
         endpoints.MapPut("/{id:guid}/horarios", async (Guid id, ScheduleRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
         {
-            actor.RequirePermission(Permissions.Centers);
-            actor.RequireCenter(id);
-            await db.LockAsync("center:" + id, ct);
+            await RequireManagement(db, actor, clock, id, ct);
             if (!await db.Centers.AnyAsync(x => x.Id == id, ct))
             {
                 throw ApiContract.Missing();

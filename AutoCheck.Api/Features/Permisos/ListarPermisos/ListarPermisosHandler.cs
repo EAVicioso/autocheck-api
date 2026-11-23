@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Collections.Immutable;
 namespace AutoCheck.Api.Features.Permisos.ListarPermisos;
 

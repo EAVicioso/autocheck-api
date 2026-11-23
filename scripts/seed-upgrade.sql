@@ -9,6 +9,8 @@ insert into autocheck."Vehicle" ("Id","OwnerId","Plate","Vin","Year","ModelId","
  ('30000000-0000-0000-0000-000000000005','30000000-0000-0000-0000-000000000002','UPGRADE-01','123456789ABCDEFGH',2020,'20000000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000003');
 insert into autocheck."PaymentAttempt" ("Id","UserId","VehicleId","CenterId","RampId","Starts","Expires","State","Scenario") values
  ('30000000-0000-0000-0000-000000000006','30000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000005','30000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000004','2026-11-11T14:00:00Z','2026-11-11T13:05:00Z','APROBADO','APROBADO');
+insert into autocheck."PaymentEvent" ("Id", "AttemptId", "Outcome") values
+ ('upgrade-approval','30000000-0000-0000-0000-000000000006','APROBADO');
 insert into autocheck."Appointment" ("Id","AttemptId","UserId","VehicleId","CenterId","RampId","InspectorId","Starts","State") values
  ('30000000-0000-0000-0000-000000000007','30000000-0000-0000-0000-000000000006','30000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000005','30000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000004','30000000-0000-0000-0000-000000000003','2026-11-11T14:00:00Z','COMPLETADA');
 insert into autocheck."Inspection" ("Id","AppointmentId","OwnerId","VehicleId","CenterId","RampId","InspectorId","Started","Closed","State","Result","RuleVersion","MaxMinor","Defects","Minor","Medium","Serious","Revision","MongoId","VehicleSnapshot","CenterSnapshot") values

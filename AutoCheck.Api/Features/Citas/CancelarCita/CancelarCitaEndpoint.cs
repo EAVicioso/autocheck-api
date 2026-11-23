@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Citas.Common;
 using static AutoCheck.Api.Features.Citas.Common.AppointmentSupport;
 
@@ -31,6 +33,12 @@ public static class CancelarCitaEndpoint
             a.State = "CANCELADA";
             payment.State = "REVERTIDO";
             payment.ReversalId ??= Guid.NewGuid();
+            db.Audit.Add(new()
+            {
+                ActorId = actor.Id, At = clock.GetUtcNow(), Operation = "REVERSION", Entity = payment.Id.ToString(),
+                Outcome = "REVERTIDO", Correlation = h.TraceIdentifier,
+                After = ApiReply.Serialize(new { citaId = a.Id, reversionId = payment.ReversalId })
+            });
             var block = await db.Blocks.SingleOrDefaultAsync(x => x.RampId == a.RampId && x.Starts == a.Starts && x.AttemptId == a.AttemptId, ct);
             if (block is not null)
             {

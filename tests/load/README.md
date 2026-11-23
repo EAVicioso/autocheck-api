@@ -12,6 +12,8 @@ k6 run -e PROFILE=history -e BASE_URL=https://api-validacion.example \
 
 Repetir con `PROFILE=pdf`, `assistant` y `contingency`, conservando resultados separados. Para contingencia inducir caída, salida inválida o timeout del proveedor en la infraestructura de prueba; el harness no agrega un endpoint de sabotaje a la API.
 
+Los perfiles de asistencia dejan cinco segundos entre operaciones para respetar 15 solicitudes por minuto. Usar 20 preguntas que no coincidan con las preguntas frecuentes locales y comprobar la cuota disponible en Google AI Studio. La pausa queda fuera de la medición de latencia. Validar las respuestas locales por separado.
+
 `datos.json`: `{"records":[{"token":"<sesion-activa>","vehiculoId":"<id>"},...]}` para historial. Debe haber 10,000 inspecciones sintéticas y consultas a distintos vehículos autorizados. Para PDF proporcionar 20 `inspeccionId` aprobados diferentes y token propietario; para IA proporcionar 20 consultas de uso/ITV y token activo. Los archivos con tokens quedan fuera del repositorio y de artefactos públicos.
 
 `evidencia.json` identifica las mediciones y configuración del emulador:

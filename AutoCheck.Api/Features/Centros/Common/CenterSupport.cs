@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Centros;
 using AutoCheck.Api.Features.Centros.Common;
 
@@ -7,6 +9,17 @@ public static class CenterSupport
 {
     public static CenterResponse Response(Center c) => new(c.Id, c.Name, c.Address, c.Active);
     public static async Task<bool> HasCommitments(AutoCheckDb db, Guid center, Guid? ramp, DateTimeOffset now, CancellationToken ct) => await db.Appointments.AnyAsync(x => x.CenterId == center && (ramp == null || x.RampId == ramp) && (x.State == "EN_INSPECCION" || (x.State == "CONFIRMADA" && x.Starts > now)), ct) || await db.Blocks.AnyAsync(x => x.State == "RETENIDO" && x.Expires > now && (ramp == null || x.RampId == ramp) && db.Ramps.Any(r => r.Id == x.RampId && r.CenterId == center), ct);
+    internal static async Task RequireManagement(AutoCheckDb db, AppActor actor, TimeProvider clock, Guid centerId, CancellationToken ct)
+    {
+        actor.RequirePermission(Permissions.Centers);
+        actor.RequireCenter(centerId);
+        await db.LockAsync("center:" + centerId, ct);
+        await db.LockAsync("user:" + actor.Id, ct);
+        await actor.RevalidateAuthority(db, clock, ct);
+        actor.RequirePermission(Permissions.Centers);
+        actor.RequireCenter(centerId);
+    }
+
     internal static void QueueAvailability(AutoCheckDb db, Guid centerId, DateTimeOffset now) => db.Outbox.Add(new()
     {
         Kind = "DISPONIBILIDAD",

@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using AutoCheck.Api.Features.Certificados.Common;
 using static AutoCheck.Api.Features.Certificados.Common.CertificateSupport;
@@ -8,7 +10,7 @@ public static class SolicitarCertificadoEndpoint
 {
     public static void MapSolicitarCertificado(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/inspecciones/{id:guid}/certificado", HandleAsync).RequireAuthorization().Interactive().WithTags("Certificados").Document<CertificateResponse>("SolicitarCertificado", "CU-06 / PA-06b,c", 202).Produces<CertificateResponse>();
+        endpoints.MapPost("/api/inspecciones/{id:guid}/certificado", HandleAsync).RequireAuthorization().Interactive().WithTags("Certificados").WithMetadata(new MutationAudit("CERTIFICADO_SOLICITADO")).Document<CertificateResponse>("SolicitarCertificado", "CU-06 / PA-06b,c", 202).Produces<CertificateResponse>();
     }
     private static async Task<Results<Ok<CertificateResponse>, Accepted<CertificateResponse>, ValidationProblem, ProblemHttpResult, UnauthorizedHttpResult, ForbidHttpResult>> HandleAsync(Guid id, HttpContext h, Handler handler, CancellationToken ct)
     {

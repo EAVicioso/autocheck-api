@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Features.Auditorias.Common;
 
 public sealed record AuditResponse(Guid Id, Guid? ActorId, DateTimeOffset FechaUtc, string Operacion, string Entidad, string Resultado, string Correlacion, string? Ip, JsonElement? Anterior, JsonElement? Nuevo);

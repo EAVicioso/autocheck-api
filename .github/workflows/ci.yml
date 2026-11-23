@@ -108,7 +108,7 @@ jobs:
           curl --fail --location --retry 3 https://github.com/oasdiff/oasdiff/releases/download/v1.37.0/oasdiff_1.37.0_linux_amd64.tar.gz -o /tmp/oasdiff.tar.gz
           echo 'eac87307d31d08c36800c58a409c247f1c5db37fbb72e2544402f22a87cbca3c  /tmp/oasdiff.tar.gz' | sha256sum --check
           tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
-      - run: /tmp/oasdiff breaking artifacts/base-openapi.json artifacts/current-openapi.json --fail-on ERR
+      - run: python scripts/check-openapi.py /tmp/oasdiff artifacts/base-openapi.json artifacts/current-openapi.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

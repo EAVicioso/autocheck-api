@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype, SRS 1.1; RF-CER-01/02, PA-06/07, EE-03/06.
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;

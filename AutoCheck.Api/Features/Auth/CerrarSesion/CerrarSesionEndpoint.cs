@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using System.Net.Http.Headers;
 namespace AutoCheck.Api.Features.Auth.CerrarSesion;

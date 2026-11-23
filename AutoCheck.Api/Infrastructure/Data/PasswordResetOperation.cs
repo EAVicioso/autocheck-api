@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Infrastructure.Data;
 
 // RS-09/10/11: a recovery intent never contains credentials or token material.

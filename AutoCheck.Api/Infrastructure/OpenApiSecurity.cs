@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck academic prototype; describe the same authorization enforced by the server.
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OpenApi;

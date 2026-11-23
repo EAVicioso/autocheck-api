@@ -10,7 +10,7 @@ Ocho rutas adicionales completan consultas y archivado: roles, permisos, detalle
 
 Usuarios/vehículos incorporan `version` y `archivadoUtc`. PATCH admite `version` opcional para clientes anteriores. Cuando se envía, exige que coincida con la vigente. Las mutaciones conservan el token de concurrencia y responden 409 ante un conflicto detectado. DELETE archiva, conserva identidad/unicidad/historial, impide trabajo nuevo y revoca sesiones locales de usuarios archivados. Se protege al último administrador global y se rechazan operaciones pendientes. Reservas e inicio de inspección coordinan los locks con el archivo lógico.
 
-Listados de usuarios, vehículos y catálogos tienen filtros/órdenes allowlist y tamaño máximo 20. Auditoría, certificados e historial admiten offset o cursor estable fecha/id. Las consultas proyectan DTOs, propagan cancelación y evitan tracking en lectura; descargar PDF valida primero autorización/estado antes de leer bytea. La verificación QR conserva cinco campos públicos y comprueba tres hashes: recibido, almacenado y recalculado.
+Listados de usuarios, vehículos y catálogos tienen filtros/órdenes allowlist y tamaño máximo 20. Auditoría, certificados e historial admiten offset o cursor estable fecha/id. Las consultas proyectan DTOs, propagan cancelación y evitan tracking en lectura; descargar PDF valida primero autorización/estado antes de leer bytea. La verificación QR devuelve cuatro campos públicos y comprueba tres hashes: recibido, almacenado y recalculado.
 
 Políticas nativas consultan AppActor cargado desde PostgreSQL; metadata editable no concede roles. JWT valida issuer, audience, firma, expiración, sub/session_id y role de transporte authenticated. Logout revoca localmente una vez antes de la llamada remota y permite reintentar con el mismo JWT propio. Refresh respeta la barrera de reset y 60 minutos exactos de inactividad, sin extender actividad. Login conserva cinco fallos/15 minutos y la recuperación conserva la intención durable antes de cambiar Auth.
 
@@ -63,7 +63,7 @@ Las pruebas comprueban primero que `autocheck_api` puede conectarse y que no hay
 1. Registro/login reales y rechazo de escalación por metadata; perfil y catálogos de usuarios/roles/permisos.
 2. Centro/rampa/horarios sintéticos propios, asignación de inspector y CRUD de vehículo.
 3. Pago simulado mediante webhook HMAC, inspección cerrada aprobada y emisión por outbox filtrada por su aggregate.
-4. Listado/detalle, descarga PDF repetida, SHA-256, firma CMS independiente, QR de cinco campos e historial.
+4. Listado/detalle, descarga PDF repetida, SHA-256, firma CMS independiente, QR de cuatro campos e historial.
 5. Auditoría con cursor, actividad, refresh, recuperación/reset, revocación de JWT anteriores, logout y archivado lógico.
 
 El despachador filtra por tipo y agregado sintético. Con `AUTOCHECK_ATLAS_E2E=true` y `MongoDb:ConnectionString` autorizado para `ClusterAC`, el harness también entrega `COPIA_MONGO` y compara el documento de Atlas con el cierre de PostgreSQL por ObjectId, resultado, versión de reglas y conteos. Al finalizar, bloquea las identidades nuevas en Auth, inactiva sus usuarios y sesiones locales y retira únicamente sus mensajes técnicos pendientes. Conserva cierres, certificados y auditorías. Los correos de registro y recuperación se dirigen al buzón sintético.

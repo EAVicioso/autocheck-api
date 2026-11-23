@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Vehiculos.Common;
 using static AutoCheck.Api.Features.Vehiculos.Common.VehicleSupport;
 namespace AutoCheck.Api.Features.Vehiculos.ActualizarVehiculo;

@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 namespace AutoCheck.Api.Infrastructure;
 // Intentionally log only classification and correlation. Provider exceptions can
 // contain SQL parameters, tokens or upstream response bodies and must not be logged.

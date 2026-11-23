@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck SRS 1.1. PostgreSQL stores timestamps at microsecond precision.
 namespace AutoCheck.Api.Infrastructure;
 

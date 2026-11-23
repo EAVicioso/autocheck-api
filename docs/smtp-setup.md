@@ -59,3 +59,7 @@ La aceptación SMTP demuestra que el servidor recibió el mensaje, no que llegó
 - [SendGrid: identidad de remitente](https://www.twilio.com/docs/sendgrid/ui/sending-email/sender-verification).
 - [Microsoft: SmtpClient de System.Net.Mail no recomendado para desarrollos nuevos](https://learn.microsoft.com/en-us/dotnet/api/system.net.mail.smtpclient?view=net-10.0).
 - [MailKit: opciones TLS](https://mimekit.net/docs/html/T_MailKit_Security_SecureSocketOptions.htm).
+
+### Enlace de recuperación (IS-04 / CU-02)
+
+La plantilla de Supabase Auth entrega `{{ .TokenHash }}` al portal de recuperación. El portal envía ese valor como `token` a `POST /api/auth/restablecimiento` al confirmar la contraseña nueva. El canje de un solo uso ocurre en el backend. Publicar la plantilla y el portal junto con la versión de la API que usa este contrato.

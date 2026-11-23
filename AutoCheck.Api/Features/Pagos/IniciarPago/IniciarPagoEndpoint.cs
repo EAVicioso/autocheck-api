@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using System.Security.Cryptography;
 using System.Text;
 
@@ -75,6 +77,12 @@ public static class IniciarPagoEndpoint
         block.AttemptId = p.Id;
         block.State = "RETENIDO";
         block.Expires = p.Expires;
+        db.Audit.Add(new()
+        {
+            ActorId = actor.Id, At = now, Operation = "RETENCION", Entity = p.Id.ToString(),
+            Outcome = "RETENIDO", Correlation = h.TraceIdentifier,
+            After = ApiReply.Serialize(new { r.CentroId, r.RampaId, inicioUtc = p.Starts, expiraUtc = p.Expires })
+        });
         db.Outbox.Add(new() { Kind = "PAGO_SANDBOX", AggregateId = p.Id, Available = now.AddSeconds(r.DemoraSegundos) });
         db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = now, Payload = ApiReply.Serialize(new { centroId = r.CentroId }) });
         return ApiReply.Created($"/api/pagos/intentos/{p.Id}", new HoldResponse(p.Id, p.Id, "RETENIDO", p.Expires, p.Amount, p.Currency));

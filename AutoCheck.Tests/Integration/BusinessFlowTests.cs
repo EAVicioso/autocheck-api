@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
 using System.Diagnostics;
 using System.Net;
@@ -27,6 +29,7 @@ namespace AutoCheck.Tests.Integration;
 [Trait("Category", "Integration")]
 public partial class BusinessFlowTests : DatabaseTest
 {
+    private static readonly string[] PublicCertificateFields = ["centro", "certificadoId", "emisionUtc", "resultado"];
     [IntegrationFact]
     public async Task PA01RegistrationValidatesAndPreventsDuplicateAccounts()
     {
@@ -372,8 +375,12 @@ public partial class BusinessFlowTests : DatabaseTest
 
         using var anonymous = App.CreateClient();
         var publicData = await Json(await anonymous.GetAsync($"/api/certificados/{certificate.Id}/verificacion?hash={certificate.ManifestHash}"));
-        Assert.Equal(5, publicData.EnumerateObject().Count());
-        Assert.False(publicData.TryGetProperty("inspeccionId", out _));
+        Assert.Equal(PublicCertificateFields,
+            publicData.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await anonymous.GetAsync($"/api/certificados/{certificate.Id}/verificacion?hash=malformado")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await anonymous.GetAsync($"/api/certificados/{Guid.NewGuid()}/verificacion")).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await anonymous.GetAsync($"/api/certificados/{certificate.Id}/verificacion?hash={new string('0', 64)}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await Inspector.GetAsync($"/api/certificados/{certificate.Id}/pdf")).StatusCode);
         var history = await Json(await Citizen.GetAsync($"/api/vehiculos/{VehicleId}/historial"));
@@ -493,6 +500,13 @@ public partial class BusinessFlowTests : DatabaseTest
         Assert.Equal(0, App.Assistance.Calls);
         await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " " + new string('a', 2000) + " " }));
         Assert.Equal(1, App.Assistance.Calls);
+        App.Assistance.Mode = "error";
+        var local = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " ¿CUÁNTO DURA UNA CITA? " }));
+        Assert.Equal(3, local.EnumerateObject().Count());
+        Assert.Equal("OK", local.GetProperty("codigo").GetString());
+        Assert.Equal("USO_PLATAFORMA", local.GetProperty("categoria").GetString());
+        Assert.Equal("Cada cita dura treinta minutos.", local.GetProperty("respuesta").GetString());
+        Assert.Equal(1, App.Assistance.Calls);
         foreach (var mode in new[]
         {
             "invalid",
@@ -504,13 +518,14 @@ public partial class BusinessFlowTests : DatabaseTest
         {
             App.Assistance.Mode = mode;
             var watch = Stopwatch.StartNew();
-            var result = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = "¿Cómo reservo una cita?" }), HttpStatusCode.ServiceUnavailable);
+            var result = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = "¿Cómo reservo una cita? ¿Incluye el seguro?" }), HttpStatusCode.ServiceUnavailable);
             Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
             Assert.Equal(3, result.EnumerateObject().Count());
             Assert.Equal("SERVICIO_NO_DISPONIBLE", result.GetProperty("codigo").GetString());
             Assert.Equal("NO_DETERMINADA", result.GetProperty("categoria").GetString());
             Assert.Equal("El servicio de asistencia no está disponible temporalmente. Intenta de nuevo.", result.GetProperty("respuesta").GetString());
         }
+        Assert.Equal(4, App.Assistance.Calls);
     }
 
     [IntegrationFact]

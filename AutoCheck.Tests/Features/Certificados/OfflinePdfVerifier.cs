@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // Independent CMS validation: does not invoke the PDFsharp signing implementation or the server.
 using System.Formats.Asn1;
 using System.Security.Cryptography;

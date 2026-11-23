@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Inspecciones.Common;
 using AutoCheck.Api.Features.Vehiculos;
 using AutoCheck.Api.Features.Vehiculos.Common;
@@ -12,13 +14,15 @@ public static class CrearVersionReglasEndpoint
     {
         endpoints.MapPost("", async (NewRuleRequest r, HttpContext h, AutoCheckDb db, AppActor actor, Mutation mutation, TimeProvider clock) => await mutation.Run(h, r, async ct =>
         {
+            await db.LockAsync("user:" + actor.Id, ct);
+            await db.LockAsync("rules", ct);
+            await actor.RevalidateAuthority(db, clock, ct);
             actor.RequirePermission(Permissions.Rules);
             if (actor.CenterId is not null)
             {
                 AppActor.Deny();
             }
 
-            await db.LockAsync("rules", ct);
             if (r.VigenciaUtc < clock.GetUtcNow())
             {
                 throw ApiContract.Invalid("La vigencia no puede ser retroactiva.");

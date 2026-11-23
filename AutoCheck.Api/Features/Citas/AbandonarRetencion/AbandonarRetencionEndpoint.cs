@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 using AutoCheck.Api.Features.Citas.Common;
 using static AutoCheck.Api.Features.Citas.Common.AppointmentSupport;
 
@@ -25,8 +27,7 @@ public static class AbandonarRetencionEndpoint
             var b = await db.Blocks.SingleOrDefaultAsync(x => x.RampId == p.RampId && x.Starts == p.Starts && x.AttemptId == id, ct);
             if (b?.State == "RETENIDO")
             {
-                db.Blocks.Remove(b);
-                db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = clock.GetUtcNow(), Payload = ApiReply.Serialize(new { centroId = p.CenterId }) });
+                ReleaseBlock(db, b, p, actor.Id, h.TraceIdentifier, clock.GetUtcNow());
             }
 
             if (p.State == "PENDIENTE")
@@ -36,5 +37,19 @@ public static class AbandonarRetencionEndpoint
 
             return ApiReply.Empty();
         })).Interactive().Document<object>("AbandonarRetencion", "RF-CIT-02 / CU-03", 204);
+    }
+
+    private static void ReleaseBlock(AutoCheckDb db, BookingBlock block, PaymentAttempt payment,
+        Guid actorId, string correlation, DateTimeOffset now)
+    {
+        var expired = block.Expires <= now;
+        db.Audit.Add(new()
+        {
+            ActorId = actorId, At = now, Operation = expired ? "EXPIRACION" : "LIBERACION",
+            Entity = payment.Id.ToString(), Outcome = expired ? "VENCIDA" : "ABANDONADA", Correlation = correlation
+        });
+        db.Blocks.Remove(block);
+        db.Outbox.Add(new() { Kind = "DISPONIBILIDAD", AggregateId = Guid.NewGuid(), Available = now,
+            Payload = ApiReply.Serialize(new { centroId = payment.CenterId }) });
     }
 }

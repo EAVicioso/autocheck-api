@@ -1,3 +1,5 @@
+// AutoCheck / INTEC | SRS 1.1 | Source history: Git.
+
 // AutoCheck SRS 1.1. Public JSON contracts used by OpenAPI compatibility checks.
 namespace AutoCheck.Api.Infrastructure;
 
