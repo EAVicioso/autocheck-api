@@ -90,7 +90,11 @@ builder.Services.AddCors(o => o.AddPolicy("frontend", p => p.WithOrigins((builde
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
     o.MapInboundClaims = false;
-    o.Events = new JwtBearerEvents { OnTokenValidated = TransportClaims.Validate };
+    o.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = SupabaseJwks.WaitForConfiguration,
+        OnTokenValidated = TransportClaims.Validate
+    };
     var issuer = (builder.Configuration["Supabase:Url"] ?? "https://unconfigured.invalid").TrimEnd('/') + "/auth/v1";
     o.TokenValidationParameters = new TokenValidationParameters
     {

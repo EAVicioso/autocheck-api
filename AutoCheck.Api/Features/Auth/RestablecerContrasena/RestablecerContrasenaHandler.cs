@@ -6,9 +6,12 @@ public sealed class RestablecerContrasenaHandler(IIdentityProvider provider, IPa
 {
     public async Task Execute(ResetRequest request, string correlation, CancellationToken requestAborted)
     {
-        var proof = await provider.ValidateRecovery(request.Token, requestAborted);
-        var operationId = await revocation.Prepare(proof.AuthId, correlation, requestAborted);
-        // After the durable commit, client cancellation cannot abort security work.
+        requestAborted.ThrowIfCancellationRequested();
+        // The exchange consumes a one-use link. Complete the durable handoff even if the client disconnects.
+        using var recoveryTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var proof = await provider.ValidateRecovery(request.Token, recoveryTimeout.Token);
+        using var preparationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var operationId = await revocation.Prepare(proof.AuthId, correlation, preparationTimeout.Token);
         // The worker's lease exceeds both this budget and the finalization budget.
         using var externalTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var outcome = await ExecuteExternal(request with { Token = proof.AccessToken }, proof.AuthId, externalTimeout.Token);

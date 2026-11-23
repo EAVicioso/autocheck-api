@@ -2,6 +2,7 @@
 
 using AutoCheck.Api.Features.Auth.Common;
 using AutoCheck.Api.Infrastructure;
+using AutoCheck.Api.Infrastructure.Data;
 using AutoCheck.Api.Infrastructure.Security;
 using AutoCheck.Tests.Integration;
 using Microsoft.AspNetCore.Http;
@@ -108,10 +109,53 @@ public sealed class IdentityHandlerTests
         var provider = Substitute.For<IIdentityProvider>();
         var revocation = Substitute.For<IPasswordResetRevocation>();
         var authId = Guid.NewGuid();
-        provider.ValidateRecovery("synthetic", default).Returns(new ProviderRecovery(authId, "synthetic"));
-        revocation.Prepare(authId, "test", default).Returns(Task.FromException<Guid>(new ApiException(409, "RECUPERACION_PENDIENTE", "Pendiente")));
+        provider.ValidateRecovery("synthetic", Arg.Any<CancellationToken>()).Returns(new ProviderRecovery(authId, "synthetic"));
+        revocation.Prepare(authId, "test", Arg.Any<CancellationToken>()).Returns(Task.FromException<Guid>(new ApiException(409, "RECUPERACION_PENDIENTE", "Pendiente")));
         await Assert.ThrowsAsync<ApiException>(() => new Reset.RestablecerContrasenaHandler(provider, revocation).Execute(new("synthetic", "replacement"), "test", default));
         await provider.DidNotReceive().Reset(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         await revocation.DidNotReceive().Finish(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResetCompletesAfterTheClientDisconnectsDuringTheOneUseExchange()
+    {
+        using var client = new CancellationTokenSource();
+        var provider = Substitute.For<IIdentityProvider>();
+        var revocation = Substitute.For<IPasswordResetRevocation>();
+        var authId = Guid.NewGuid();
+        var operation = Guid.NewGuid();
+        provider.ValidateRecovery("synthetic-link", Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            await client.CancelAsync();
+            call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+            return new ProviderRecovery(authId, "synthetic-proof");
+        });
+        revocation.Prepare(authId, "test", Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+            return operation;
+        });
+        provider.Reset("synthetic-proof", "replacement", Arg.Any<CancellationToken>()).Returns(authId);
+
+        await new Reset.RestablecerContrasenaHandler(provider, revocation).Execute(new("synthetic-link", "replacement"), "test", client.Token);
+
+        Received.InOrder(() =>
+        {
+            _ = revocation.Prepare(authId, "test", Arg.Any<CancellationToken>());
+            _ = provider.Reset("synthetic-proof", "replacement", Arg.Any<CancellationToken>());
+            _ = revocation.Finish(operation, PasswordResetStates.Completed, Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task ResetDoesNotConsumeTheLinkWhenTheClientAlreadyDisconnected()
+    {
+        var provider = Substitute.For<IIdentityProvider>();
+        using var client = new CancellationTokenSource();
+        await client.CancelAsync();
+        var handler = new Reset.RestablecerContrasenaHandler(provider, Substitute.For<IPasswordResetRevocation>());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => handler.Execute(new("synthetic-link", "replacement"), "test", client.Token));
+        await provider.DidNotReceive().ValidateRecovery(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

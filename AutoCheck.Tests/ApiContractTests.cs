@@ -1,13 +1,22 @@
 // AutoCheck / INTEC | SRS 1.1 | Source history: Git.
 
 // AutoCheck / INTEC, SRS 1.1. Acceptance evidence; history: Git.
+using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
+using AutoCheck.Api.Features.Chatbot.Common;
+using AutoCheck.Api.Infrastructure.Security;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace AutoCheck.Tests;
 
@@ -19,6 +28,56 @@ public class PublicApiFactory : WebApplicationFactory<Program>
 public class ApiContractTests(PublicApiFactory application) : IClassFixture<PublicApiFactory>
 {
     private readonly HttpClient client = application.CreateClient();
+
+    [Fact]
+    public async Task PA09ColdJwksWaitReturnsExactContingencyWithinThreeSeconds()
+    {
+        const string issuer = "https://unconfigured.invalid/auth/v1";
+        var document = new SlowJwks();
+        var manager = new ConfigurationManager<OpenIdConnectConfiguration>(issuer + "/.well-known/jwks.json", new SupabaseJwks(issuer), document);
+        await using var server = application.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+            services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options => options.ConfigurationManager = manager)));
+        server.UseKestrel(0);
+        using var http = server.CreateClient();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/asistencia")
+        {
+            Content = JsonContent.Create(new { consulta = "¿Cómo reservo una cita?" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "synthetic.jwt.placeholder");
+
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var pending = http.SendAsync(request, deadline.Token);
+            await document.Entered.Task.WaitAsync(deadline.Token);
+            using var response = await pending;
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token));
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"Contingency took {stopwatch.Elapsed}.");
+            Assert.Equal(3, json.RootElement.EnumerateObject().Count());
+            Assert.Equal(AssistanceSupport.Contingency, json.RootElement.GetProperty("respuesta").GetString());
+            Assert.Equal("NO_DETERMINADA", json.RootElement.GetProperty("categoria").GetString());
+            Assert.Equal("SERVICIO_NO_DISPONIBLE", json.RootElement.GetProperty("codigo").GetString());
+        }
+        finally
+        {
+            document.Release.TrySetResult("""{"keys":[]}""");
+            await manager.GetConfigurationAsync(deadline.Token);
+        }
+    }
+
+    private sealed class SlowJwks : IDocumentRetriever
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<string> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<string> GetDocumentAsync(string address, CancellationToken cancel)
+        {
+            Entered.TrySetResult();
+            return Release.Task.WaitAsync(cancel);
+        }
+    }
 
     [Fact]
     public async Task EveryProtectedOperationRejectsAnonymousRequestsBeforeBindingOrDatabaseAccess()

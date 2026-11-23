@@ -106,13 +106,7 @@ public partial class BusinessFlowTests
             await db.Database.ExecuteSqlRawAsync("""SELECT * FROM autocheck."DailyMetric" FOR UPDATE""", ct);
             var blockerPid = await db.Database.SqlQueryRaw<int>("SELECT pg_backend_pid() AS \"Value\"").SingleAsync(ct);
             var pending = consolidator.Run(ct);
-            while (!await WithDb(probe => probe.Database.SqlQuery<bool>($"""
-                       SELECT EXISTS (SELECT FROM pg_stat_activity WHERE datname = current_database()
-                           AND {blockerPid} = ANY(pg_blocking_pids(pid))) AS "Value"
-                       """).SingleAsync(ct)))
-            {
-                await Task.Delay(20, ct);
-            }
+            await WaitForBlockedBackend(blockerPid, ct);
 
             await AddReportInspection(20, true, firstClose.AddSeconds(20));
             await blocker.RollbackAsync(ct);
@@ -123,6 +117,56 @@ public partial class BusinessFlowTests
         Assert.Equal(20, await WithDb(db => db.Metrics.SumAsync(x => x.Approved + x.Rejected)));
         Assert.Equal(0, await WithDb(db => db.Alerts.CountAsync()));
         await AssertReportReconciliation(21);
+    }
+
+    [IntegrationFact]
+    public async Task PA08WaitingConsolidatorReconcilesAfterTheFirstReplicaCommits()
+    {
+        var firstClose = App.Clock.Now.AddHours(-8);
+        for (var n = 0; n < 20; n++)
+        {
+            await AddReportInspection(n, true, firstClose.AddSeconds(n));
+        }
+        await AssertReportReconciliation(20);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = timeout.Token;
+        using var firstScope = App.Services.CreateScope();
+        using var secondScope = App.Services.CreateScope();
+        await WithDb(async db =>
+        {
+            await using var blocker = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlRawAsync("""SELECT * FROM autocheck."DailyMetric" FOR UPDATE""", ct);
+            var blockerPid = await db.Database.SqlQueryRaw<int>("SELECT pg_backend_pid() AS \"Value\"").SingleAsync(ct);
+            var first = firstScope.ServiceProvider.GetRequiredService<ReportConsolidator>().Run(ct);
+            var firstPid = await WaitForBlockedBackend(blockerPid, ct);
+            var second = secondScope.ServiceProvider.GetRequiredService<ReportConsolidator>().Run(ct);
+            await WaitForBlockedBackend(firstPid, ct);
+
+            await AddReportInspection(20, true, firstClose.AddSeconds(20));
+            await blocker.RollbackAsync(ct);
+            await Task.WhenAll(first, second);
+            return true;
+        });
+
+        Assert.Equal(21, await WithDb(db => db.Metrics.SumAsync(x => x.Approved + x.Rejected)));
+        Assert.Equal(1, await WithDb(db => db.Alerts.CountAsync()));
+    }
+
+    private async Task<int> WaitForBlockedBackend(int blockingPid, CancellationToken ct)
+    {
+        while (true)
+        {
+            var pid = await WithDb(db => db.Database.SqlQuery<int>($"""
+                SELECT pid AS "Value" FROM pg_stat_activity
+                WHERE datname = current_database() AND {blockingPid} = ANY(pg_blocking_pids(pid))
+                """).FirstOrDefaultAsync(ct));
+            if (pid != 0)
+            {
+                return pid;
+            }
+            await Task.Delay(20, ct);
+        }
     }
 
     [IntegrationFact]
