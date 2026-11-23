@@ -41,6 +41,7 @@ public sealed class AutoCheckDb(DbContextOptions<AutoCheckDb> options, IHttpCont
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("autocheck");
+        modelBuilder.Entity<Features.Chatbot.Common.GeminiQuotaReservation>().HasIndex(x => x.ReservedAt);
         modelBuilder.Entity<UserAccount>().Property(x => x.Version).IsConcurrencyToken().HasDefaultValue(1L);
         modelBuilder.Entity<Vehicle>().Property(x => x.Version).IsConcurrencyToken().HasDefaultValue(1L);
         modelBuilder.Entity<AuditEvent>().Property(x => x.Before).HasColumnType("jsonb");

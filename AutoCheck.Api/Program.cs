@@ -75,7 +75,10 @@ builder.Services.AddScoped<OutboxDispatcher>();
 builder.Services.AddScoped<ReportConsolidator>();
 builder.Services.AddHostedService<BackgroundDelivery>();
 builder.Services.AddHttpClient<IIdentityProvider, SupabaseIdentity>(c => c.Timeout = TimeSpan.FromSeconds(5));
-builder.Services.AddHttpClient<IAssistanceProvider, GeminiAssistance>(c => c.Timeout = TimeSpan.FromSeconds(2));
+builder.Services.AddScoped<IGeminiQuota, GeminiQuota>();
+builder.Services.AddHttpClient<IAssistanceProvider, GeminiAssistance>(c => c.Timeout = TimeSpan.FromSeconds(2))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .RedactLoggedHeaders(["x-goog-api-key"]);
 builder.Services.AddHttpClient<IAvailabilityPublisher, SupabaseAvailability>(c => c.Timeout = TimeSpan.FromSeconds(2))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {

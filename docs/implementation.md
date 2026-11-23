@@ -74,6 +74,10 @@ RF-DAS-01–03: el worker consolida cada 30 segundos mientras la API está activ
 
 RF-CHAT-01/02 / IS-05: `/api/asistencia` acepta `consulta` de 1–2000 caracteres tras trim y devuelve únicamente `respuesta`, `categoria`, `codigo`. Limita la espera del proveedor a dos segundos y aplica un presupuesto global de 2,5 segundos desde el middleware, antes de autenticación y enlace de la solicitud. No reintenta sincrónicamente. Errores o salida inválida producen 503 con la contingencia exacta antes de tres segundos. Contexto: `Assets/asistencia-aprobada.txt`; no se envían tokens ni datos de otro propietario ni existen herramientas transaccionales en el chatbot.
 
+CU-09 / PA-09: las preguntas frecuentes con coincidencia completa usan respuestas aprobadas en la API y conservan el mismo contrato. Gemini 3.5 Flash-Lite resuelve las demás con salida JSON y hasta 320 tokens. El backend reserva capacidad de forma atómica en PostgreSQL para todas las instancias que comparten la base. Admite hasta 15 solicitudes y 250 000 tokens de entrada estimados por minuto móvil, y 500 solicitudes por día con reinicio a medianoche del Pacífico. La tabla conserva el identificador de cada reserva, su fecha y la estimación de tokens. El cálculo cubre llamadas originadas en esa base. Google también contabiliza el tráfico externo del proyecto. Un rechazo por cuota conserva la contingencia 503 y los registros identifican cuota, errores HTTP, tiempo agotado o salida inválida sin incluir consultas.
+
+Antes de desplegar esta versión, aplicar la migración `TrackGeminiQuota` con el rol de migración. Si el entorno define `Gemini__Model`, actualizarlo a `gemini-3.5-flash-lite` para adoptar el nuevo modelo.
+
 ## Persistencia, migración y operación
 
 El esquema `autocheck` es privado: no se otorgan accesos Data API a anon/authenticated. La API aplica filtros incluso si la conexión de servidor tiene privilegios elevados. Usar un rol SQL de ejecución con mínimos privilegios y un rol separado para migraciones; no conectar el navegador con la conexión privada. Las tablas fuera de esquemas expuestos no requieren habilitar Data API.

@@ -500,6 +500,13 @@ public partial class BusinessFlowTests : DatabaseTest
         Assert.Equal(0, App.Assistance.Calls);
         await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " " + new string('a', 2000) + " " }));
         Assert.Equal(1, App.Assistance.Calls);
+        App.Assistance.Mode = "error";
+        var local = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = " ¿CUÁNTO DURA UNA CITA? " }));
+        Assert.Equal(3, local.EnumerateObject().Count());
+        Assert.Equal("OK", local.GetProperty("codigo").GetString());
+        Assert.Equal("USO_PLATAFORMA", local.GetProperty("categoria").GetString());
+        Assert.Equal("Cada cita dura treinta minutos.", local.GetProperty("respuesta").GetString());
+        Assert.Equal(1, App.Assistance.Calls);
         foreach (var mode in new[]
         {
             "invalid",
@@ -511,13 +518,14 @@ public partial class BusinessFlowTests : DatabaseTest
         {
             App.Assistance.Mode = mode;
             var watch = Stopwatch.StartNew();
-            var result = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = "¿Cómo reservo una cita?" }), HttpStatusCode.ServiceUnavailable);
+            var result = await Json(await Citizen.PostAsJsonAsync("/api/asistencia", new { consulta = "¿Cómo reservo una cita? ¿Incluye el seguro?" }), HttpStatusCode.ServiceUnavailable);
             Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3));
             Assert.Equal(3, result.EnumerateObject().Count());
             Assert.Equal("SERVICIO_NO_DISPONIBLE", result.GetProperty("codigo").GetString());
             Assert.Equal("NO_DETERMINADA", result.GetProperty("categoria").GetString());
             Assert.Equal("El servicio de asistencia no está disponible temporalmente. Intenta de nuevo.", result.GetProperty("respuesta").GetString());
         }
+        Assert.Equal(4, App.Assistance.Calls);
     }
 
     [IntegrationFact]

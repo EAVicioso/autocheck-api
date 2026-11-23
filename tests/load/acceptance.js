@@ -80,4 +80,5 @@ export default function () {
   }
   duration.add(Date.now() - started, { phase }); failures.add(!valid, { phase }); check(response, { 'PA contract succeeds': () => valid });
   if (profile === 'history') sleep(1);
+  if ((profile === 'assistant' || profile === 'contingency') && exec.scenario.iterationInTest < 19) sleep(5);
 }

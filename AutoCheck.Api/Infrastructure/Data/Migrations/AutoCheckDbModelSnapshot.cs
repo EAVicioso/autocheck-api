@@ -24,6 +24,25 @@ namespace AutoCheck.Api.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AutoCheck.Api.Features.Chatbot.Common.GeminiQuotaReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("EstimatedInputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("ReservedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReservedAt");
+
+                    b.ToTable("GeminiQuotaReservation", "autocheck");
+                });
+
             modelBuilder.Entity("AutoCheck.Api.Infrastructure.Data.AccountLock", b =>
                 {
                     b.Property<string>("Email")
