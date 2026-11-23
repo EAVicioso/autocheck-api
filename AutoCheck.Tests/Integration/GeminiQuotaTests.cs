@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AutoCheck.Tests.Integration;
 
+[Trait("Category", "Integration")]
 public sealed class GeminiQuotaTests : DatabaseTest
 {
     [IntegrationFact]
