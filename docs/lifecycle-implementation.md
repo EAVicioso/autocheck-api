@@ -54,7 +54,8 @@ Configurar en el almacén protegido de AutoCheck.Api (UserSecretsId del csproj),
 | `SupabaseE2E:Email`, `SupabaseE2E:Password` | Cuenta Ciudadano sintética confirmada para el smoke CRUD. |
 | `SupabaseE2E:AdminSecret` | Credencial Auth Admin dedicada al harness, nunca usada por la API. |
 | `Certificates:PfxPath`, `Certificates:PfxPassword` | PFX académico con clave privada, fuera del repositorio. |
-| `Certificates:PublicBaseUrl` | URL pública usada al construir QR. |
+| `Certificates:FrontendBaseUrl` | Base pública de la vista web de verificación para los QR nuevos, si se configura. |
+| `Certificates:PublicBaseUrl` | Base pública de la API para construir el QR JSON si falta la base del frontend. |
 | `Sandbox:WebhookSecret` | HMAC del pago simulado del fixture. |
 | `MongoDb:ConnectionString` | Para validar Atlas con `AUTOCHECK_ATLAS_E2E=true`, URI SRV de ClusterAC con TLS y permisos sobre `AutoCheckReports.Reports`. |
 

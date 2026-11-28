@@ -4,6 +4,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using AutoCheck.Api.Features.Certificados.Common;
 using PdfSharp.Drawing;
 using PdfSharp.Fonts;
 using PdfSharp.Pdf;
@@ -49,13 +50,7 @@ public sealed class AcademicPdf(IConfiguration config) : IAcademicPdf
             throw ApiContract.Unavailable();
         }
 
-        var publicBase = config["Certificates:PublicBaseUrl"];
-        if (!Uri.TryCreate(publicBase, UriKind.Absolute, out var baseUri) || (baseUri.Scheme != "https" && !baseUri.IsLoopback))
-        {
-            throw ApiContract.Unavailable();
-        }
-
-        var verifyUrl = $"{publicBase.TrimEnd('/')}/api/certificados/{certificate.Id}/verificacion?hash={certificate.ManifestHash}";
+        var verifyUrl = CertificateQrUrl.Create(config, certificate);
         lock (FontLock)
         {
             GlobalFontSettings.FontResolver ??= new AcademicFontResolver();
