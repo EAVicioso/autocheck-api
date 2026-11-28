@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AutoCheck.Api.Features.Pagos;
 using AutoCheck.Api.Features.Pagos.IniciarPago;
+using Microsoft.EntityFrameworkCore;
 
 namespace AutoCheck.Tests.Integration;
 
@@ -16,6 +17,7 @@ public class AutomaticFlowTests : DatabaseTest
     private static readonly DateTimeOffset MidnightInSantoDomingo = new(2026, 11, 12, 4, 0, 0, TimeSpan.Zero);
     protected override bool BackgroundWorkers => true;
     protected override DateTimeOffset? InitialUtc => MidnightInSantoDomingo.AddSeconds(-1);
+    protected override bool ControlHousekeeping => true;
 
     private static async Task<JsonElement> Read(HttpResponseMessage response, params HttpStatusCode[] allowed)
     {
@@ -34,7 +36,7 @@ public class AutomaticFlowTests : DatabaseTest
         return await Read(await client.SendAsync(request), allowed);
     }
 
-    private static async Task<JsonElement> WaitFor(HttpClient client, string path, Func<JsonElement, bool> condition, Action? beforeRetry = null)
+    private static async Task<JsonElement> WaitFor(HttpClient client, string path, Func<JsonElement, bool> condition)
     {
         var timer = Stopwatch.StartNew();
         while (timer.Elapsed < TimeSpan.FromSeconds(8))
@@ -45,7 +47,6 @@ public class AutomaticFlowTests : DatabaseTest
                 return state;
             }
 
-            beforeRetry?.Invoke();
             await Task.Delay(50);
         }
 
@@ -72,23 +73,45 @@ public class AutomaticFlowTests : DatabaseTest
     [IntegrationFact]
     public async Task PA08DailyConsolidationIsVisibleBeforeFiveMinutesPastSantoDomingoMidnight()
     {
+        var ticks = App.Clock.HousekeepingTicks!.Reader;
+        async Task<Action> WaitForWorkerDelay()
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            return await ticks.ReadAsync(timeout.Token);
+        }
+
+        var releaseWorker = await WaitForWorkerDelay();
         var lastOfPreviousDay = await StartRegisteredInspection(Starts);
         var firstOfNextDay = await StartRegisteredInspection(Starts.AddMinutes(30));
-        await Post(Inspector, $"/api/inspecciones/{lastOfPreviousDay}/cierre", new { versionEsperada = 1 }, HttpStatusCode.OK);
+        await StartRegisteredInspection(Starts.AddMinutes(60));
+        var lastClose = await Post(Inspector, $"/api/inspecciones/{lastOfPreviousDay}/cierre", new { versionEsperada = 1 }, HttpStatusCode.OK);
+        Assert.Equal(MidnightInSantoDomingo.AddSeconds(-1), lastClose.GetProperty("cierreUtc").GetDateTimeOffset());
         App.Clock.Now = MidnightInSantoDomingo;
-        await Post(Inspector, $"/api/inspecciones/{firstOfNextDay}/cierre", new { versionEsperada = 1 }, HttpStatusCode.OK);
+        var firstClose = await Post(Inspector, $"/api/inspecciones/{firstOfNextDay}/cierre", new { versionEsperada = 1 }, HttpStatusCode.OK);
+        Assert.Equal(MidnightInSantoDomingo, firstClose.GetProperty("cierreUtc").GetDateTimeOffset());
+        Assert.Equal(1, await WithDb(db => db.Users.Where(x => x.Id == AdminId).ExecuteUpdateAsync(
+            update => update.SetProperty(x => x.CenterId, CenterId))));
 
-        var path = $"/api/reportes/inspecciones?desde=2026-11-11&hasta=2026-11-12&centroId={CenterId}&rampaId={RampId}&inspectorId={InspectorId}";
-        var report = await WaitFor(Administrator, path, state => state.GetProperty("cerradas").GetInt32() == 2,
-            () => App.Clock.Advance(TimeSpan.FromSeconds(1)));
+        var expectedCheckpoint = MidnightInSantoDomingo.AddSeconds(30);
+        App.Clock.Now = expectedCheckpoint;
+        releaseWorker();
+        // Registering the next delay means the worker returned from the consolidation transaction.
+        await WaitForWorkerDelay();
+
+        const string path = "/api/reportes/inspecciones?desde=2026-11-11&hasta=2026-11-12";
+        var report = await Read(await Administrator.GetAsync($"{path}&centroId={CenterId}&rampaId={RampId}&inspectorId={InspectorId}"), HttpStatusCode.OK);
 
         var cutoff = MidnightInSantoDomingo.AddMinutes(5);
         var checkpoint = report.GetProperty("ultimaActualizacionUtc").GetDateTimeOffset();
-        Assert.True(checkpoint >= MidnightInSantoDomingo && checkpoint < cutoff);
+        Assert.Equal(expectedCheckpoint, checkpoint);
         Assert.True(App.Clock.Now < cutoff);
+        Assert.Equal(2, report.GetProperty("cerradas").GetInt32());
         Assert.Collection(report.GetProperty("items").EnumerateArray(),
             row => AssertDailyClose(row, "2026-11-11"),
             row => AssertDailyClose(row, "2026-11-12"));
+        var denied = await Read(await Administrator.GetAsync($"{path}&centroId={Guid.NewGuid()}"), HttpStatusCode.Forbidden);
+        Assert.Equal("ACCESO_DENEGADO", denied.GetProperty("codigo").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(denied.GetProperty("traceId").GetString()));
     }
 
     private static void AssertDailyClose(JsonElement row, string day)

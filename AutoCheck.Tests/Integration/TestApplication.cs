@@ -7,6 +7,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading.Channels;
 using AutoCheck.Api.Features.Chatbot;
 using AutoCheck.Api.Features.Chatbot.Common;
 using AutoCheck.Api.Infrastructure;
@@ -37,10 +38,30 @@ public sealed class IntegrationFactAttribute : FactAttribute
 
 public sealed class ControlledClock : TimeProvider
 {
-    public DateTimeOffset Now { get; set; } = DateTimeOffset.Parse("2026-11-11T12:00:00Z", global::System.Globalization.CultureInfo.InvariantCulture);
+    private long utcTicks = new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero).Ticks;
+    public DateTimeOffset Now
+    {
+        get => new(Volatile.Read(ref utcTicks), TimeSpan.Zero);
+        set => Volatile.Write(ref utcTicks, value.UtcTicks);
+    }
+
+    public Channel<Action>? HousekeepingTicks { get; set; }
 
     public override DateTimeOffset GetUtcNow() => Now;
-    public void Advance(TimeSpan interval) => Now += interval;
+    public void Advance(TimeSpan interval) => Interlocked.Add(ref utcTicks, interval.Ticks);
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        if (HousekeepingTicks is not { } ticks || dueTime != TimeSpan.FromSeconds(1) || period != Timeout.InfiniteTimeSpan)
+        {
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
+
+        // Hold the worker's one-shot delay until the test advances time and releases it.
+        var paused = base.CreateTimer(callback, state, Timeout.InfiniteTimeSpan, period);
+        ticks.Writer.TryWrite(() => callback(state));
+        return paused;
+    }
 }
 
 public sealed class FakeIdentity : IIdentityProvider
@@ -225,6 +246,7 @@ public abstract class DatabaseTest : IAsyncLifetime, IAsyncDisposable
 {
     protected virtual bool BackgroundWorkers => false;
     protected virtual DateTimeOffset? InitialUtc => null;
+    protected virtual bool ControlHousekeeping => false;
     protected virtual Task BeforeMigrations(AutoCheckDb db) => Task.CompletedTask;
 
     private string admin = "";
@@ -265,6 +287,10 @@ public abstract class DatabaseTest : IAsyncLifetime, IAsyncDisposable
         if (InitialUtc is { } initialUtc)
         {
             App.Clock.Now = initialUtc;
+        }
+        if (ControlHousekeeping)
+        {
+            App.Clock.HousekeepingTicks = Channel.CreateUnbounded<Action>();
         }
         using (var rsa = RSA.Create(2048))
         {

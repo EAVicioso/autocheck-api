@@ -102,6 +102,7 @@ public partial class BusinessFlowTests : DatabaseTest
         Assert.Equal(100d * 2 / 22, metrics.GetProperty("porcentajeRechazo").GetDouble());
         var empty = await Json(await Administrator.GetAsync($"/api/reportes/inspecciones?desde=2026-11-09&hasta=2026-11-09"));
         Assert.Equal("Sin datos", empty.GetProperty("estado").GetString());
+        Assert.Equal(JsonValueKind.Null, empty.GetProperty("porcentajeRechazo").ValueKind);
         var alert = await WithDb(db => db.Alerts.SingleAsync());
         var reference = await WithDb(async db => AutoCheck.Api.Features.Reportes.Common.AnomalyWindows.Build(await db.Inspections.ToListAsync()).Single());
         Assert.Equal(reference.FinalInspectionId, alert.FinalInspectionId);
@@ -564,17 +565,36 @@ public partial class BusinessFlowTests : DatabaseTest
         await Json(await Send(Inspector, HttpMethod.Post, $"/api/inspecciones/{id}/cierre", new { versionEsperada = 1 }, "close"));
         var certificateId = await WithDb(db => db.Certificates.Select(x => x.Id).SingleAsync());
         App.Archive.Fail = true;
+        var config = App.Services.GetRequiredService<IConfiguration>();
+        config["Certificates:FrontendBaseUrl"] = "http://web.example.test";
         for (var n = 0; n < 10; n++)
         {
             using var scope = App.Services.CreateScope();
             await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchOne(default);
         }
 
-        var state = await WithDb(db => db.Certificates.Select(x => x.State).SingleAsync());
-        Assert.Equal("EMITIDO", state);
+        var pending = await WithDb(db => db.Certificates.AsNoTracking().SingleAsync());
+        Assert.Equal(certificateId, pending.Id);
+        Assert.Equal("PENDIENTE", pending.State);
+        Assert.Null(pending.Pdf);
+        Assert.Null(pending.PdfHash);
+        Assert.True(await WithDb(db => db.Outbox.AnyAsync(x => x.Kind == "CERTIFICADO" && x.Attempts == 1 && x.Completed == null && x.FailedAt == null && x.Available > App.Clock.Now)));
+        Assert.True(await WithDb(db => db.Inspections.AnyAsync(x => x.Id == id && x.State == "CERRADA" && x.Result == "Aprobado")));
         Assert.True(await WithDb(db => db.Outbox.AnyAsync(x => x.Kind == "COPIA_MONGO" && x.Attempts == 1 && x.Completed == null && x.FailedAt == null && x.Available > App.Clock.Now)));
-        App.Archive.Fail = false;
+        config["Certificates:FrontendBaseUrl"] = "https://web.example.test";
         App.Clock.Advance(TimeSpan.FromSeconds(5));
+        using (var scope = App.Services.CreateScope())
+        {
+            Assert.True(await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchOne(default, "CERTIFICADO", id));
+        }
+
+        var emitted = await WithDb(db => db.Certificates.AsNoTracking().SingleAsync());
+        Assert.Equal(certificateId, emitted.Id);
+        Assert.Equal("EMITIDO", emitted.State);
+        Assert.Equal(pending.ManifestHash, emitted.ManifestHash);
+        using var trust = X509CertificateLoader.LoadPkcs12FromFile(App.PfxPath, null);
+        Assert.True(OfflinePdfVerifier.Verify(emitted.Pdf!, trust));
+        App.Archive.Fail = false;
         for (var n = 0; n < 5; n++)
         {
             using var scope = App.Services.CreateScope();

@@ -10,8 +10,10 @@ public static class CertificateQrUrl
         var useFrontend = !string.IsNullOrWhiteSpace(frontend);
         var publicBase = useFrontend ? frontend : config["Certificates:PublicBaseUrl"];
         if (!Uri.TryCreate(publicBase, UriKind.Absolute, out var uri)
-            || (uri.Scheme != Uri.UriSchemeHttps && !(uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback))
-            || uri.Host.Length == 0 || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+            || (uri.Scheme != Uri.UriSchemeHttps
+                && !(uri.Scheme == Uri.UriSchemeHttp && uri.Host is "localhost" or "127.0.0.1" or "[::1]"))
+            || uri.Host.Length == 0 || uri.GetLeftPart(UriPartial.Authority).Contains('@')
+            || uri.Query.Length != 0 || uri.Fragment.Length != 0)
         {
             throw ApiContract.Unavailable();
         }
