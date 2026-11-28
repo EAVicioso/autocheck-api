@@ -7,6 +7,7 @@ SRS 1.1. Los esquemas exactos de entrada y salida se publican en `/openapi/v1.js
 
 - `POST /api/auth/restablecimiento` recibe `token` con el `TokenHash` del enlace de correo y `nuevaContrasena`. El servidor canjea la prueba con Supabase.
 - La verificación QR satisfactoria devuelve `certificadoId`, `emisionUtc`, `centro` y `resultado`. El estado HTTP distingue éxito, ID inexistente (404) e integridad inválida (409). RF-CER-01 y PA-07a requieren retirar el campo público `integridad`. CI reconoce exclusivamente ese cambio previsto en el contrato 200.
+- Los PDF nuevos pueden apuntar a la vista web `/verificar/{id}?hash=…` al configurar `Certificates__FrontendBaseUrl`. La vista consulta `GET /api/certificados/{id}/verificacion?hash=…`. Si falta esa configuración, el QR abre directamente el mismo endpoint JSON. Los PDF emitidos mantienen su destino original.
 - El webhook de pago conserva su respuesta original al repetir un evento. Una reversión sin cita puede devolver `siguienteAccion: SELECCIONAR_OTRO_HORARIO`.
 
 | Método | Ruta | Operación / trazabilidad | Respuestas documentadas |

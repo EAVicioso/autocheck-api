@@ -66,6 +66,8 @@ La transacción de cierre conserva defectos, conteos, reglas, resultado, auditor
 
 RF-CER-01: JSON RFC 8785 de esquema restringido a claves/valores ASCII, UUID, fechas UTC y enteros; claves ordenadas ordinalmente, UTF-8 sin BOM. Incluye exactamente los 14 campos del SRS. El SHA-256 es hexadecimal minúsculo de 64 caracteres. El QR compara hash recibido, almacenado y recalculado. No expone el manifiesto ni identificadores internos.
 
+RF-CER-01 / PA-07: configurar `Certificates__FrontendBaseUrl` con la base pública de `autocheck-fe` para que nuevos PDF abran `/verificar/{id}?hash=…`. Si falta, el QR apunta al endpoint JSON actual usando `Certificates__PublicBaseUrl`. La vista web consulta ese endpoint anónimo con el mismo ID y hash. Usar bases HTTPS sin credenciales, consultas ni fragmentos. HTTP se admite en loopback para pruebas. Una base seleccionada inválida deja la emisión pendiente de reintento. Los PDF emitidos conservan el QR y los bytes originales.
+
 RF-CER-02: PDFsharp incorpora firma CMS SHA-256 después de adjuntar `manifiesto.json` y `manifiesto.sha256`. Se guarda adicionalmente SHA-256 de los bytes finales. Las descargas no regeneran el PDF. La clave privada se monta fuera de la imagen y la clave/certificado público se distribuye previamente al verificador académico. Las pruebas verifican ByteRange, CMS, confianza y alteración sin red usando un verificador independiente del firmador PDFsharp.
 
 ### Reportes y asistencia

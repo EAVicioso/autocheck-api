@@ -357,6 +357,7 @@ public partial class BusinessFlowTests : DatabaseTest
 
         var certificate = await WithDb(db => db.Certificates.AsNoTracking().SingleAsync());
         var bytes1 = await Citizen.GetByteArrayAsync($"/api/certificados/{certificate.Id}/pdf");
+        App.Services.GetRequiredService<IConfiguration>()["Certificates:FrontendBaseUrl"] = "https://updated-web.example.test";
         var bytes2 = await Citizen.GetByteArrayAsync($"/api/certificados/{certificate.Id}/pdf");
         Assert.Equal(bytes1, bytes2);
         Assert.Equal(certificate.PdfHash, Convert.ToHexStringLower(SHA256.HashData(bytes1)));

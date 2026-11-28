@@ -54,7 +54,8 @@ La primera cuenta administrativa se vincula a una identidad **ya creada y verifi
 | `Smtp__Username`, `Smtp__Password`, `Smtp__From`, `Smtp__SenderName` | Credencial Mail Send y remitente verificado para confirmaciones/cancelaciones; ver guía SMTP. |
 | `Gemini__ApiKey`, `Gemini__Model` | Asistencia. Modelo predeterminado `gemini-3.5-flash-lite` con límites compartidos de 15 RPM, 250 000 TPM de entrada estimados y 500 RPD. |
 | `Certificates__PfxPath`, `Certificates__PfxPassword` | Clave privada académica montada fuera de la imagen. |
-| `Certificates__PublicBaseUrl` | Base HTTPS de la API pública para los QR. |
+| `Certificates__FrontendBaseUrl` | Base HTTPS pública del frontend. Si se configura, los QR de nuevos PDF abren `/verificar/{id}?hash=…`. |
+| `Certificates__PublicBaseUrl` | Base HTTPS pública de la API. Se usa para el QR JSON cuando falta `Certificates__FrontendBaseUrl`. |
 | `Sandbox__WebhookSecret` | Secreto de al menos 32 caracteres para HMAC-SHA256 del cuerpo UTF-8 exacto. |
 | `Sandbox__Monto` | Monto simulado, predeterminado 1000 DOP; no representa una tarifa oficial. |
 | `AllowedOrigins` | Orígenes web separados por comas. Predeterminado `http://localhost:3000`. |

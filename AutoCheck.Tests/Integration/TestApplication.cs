@@ -224,6 +224,7 @@ public sealed class TestApplication(string connection, bool workers = false) : W
 public abstract class DatabaseTest : IAsyncLifetime, IAsyncDisposable
 {
     protected virtual bool BackgroundWorkers => false;
+    protected virtual DateTimeOffset? InitialUtc => null;
     protected virtual Task BeforeMigrations(AutoCheckDb db) => Task.CompletedTask;
 
     private string admin = "";
@@ -261,6 +262,10 @@ public abstract class DatabaseTest : IAsyncLifetime, IAsyncDisposable
 
         builder.Database = database;
         App = new(builder.ConnectionString, BackgroundWorkers);
+        if (InitialUtc is { } initialUtc)
+        {
+            App.Clock.Now = initialUtc;
+        }
         using (var rsa = RSA.Create(2048))
         {
             var request = new CertificateRequest("CN=AutoCheck isolated academic test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
